@@ -538,3 +538,268 @@ Comprehensive mobile responsiveness overhaul across all major components. Uses `
 8. **Add project templates** - Pre-built templates with more options
 9. **Add API key management** - Let users configure their own API keys
 10. **Add CI/CD pipeline** - Automated testing and deployment
+
+---
+
+#### 2-13: Deep Styling Polish & Project Analytics Dashboard (Task 4)
+
+**Part 1: Deep Styling Polish**
+
+**1. Dashboard (`/src/components/dashboard.tsx`)**
+- **Animated stat counters**: `StatCounter` component animates from 0 to target value with ease-out cubic curve using `requestAnimationFrame`
+- **Skeleton shimmer loading**: `DashboardSkeletonShimmer` component with `.animate-shimmer` effect shown for 800ms on mount
+- **Animated gradient border on "New Project" button**: Double-layered gradient blur effect with `.animate-gradient-shift`, scales on hover/active
+- **How It Works connecting elements**: Horizontal gradient line between steps (desktop), `ChevronRight` arrows between cards, all with `z-10` layering
+- **Project card hover glow**: `hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]` + `whileHover={{ scale: 1.02 }}`
+- **Recent Activity feed**: Shows last 5 actions (created/updated) with icons, project names, and relative timestamps ("Just now", "5m ago", "2h ago")
+- **Quick Actions section**: 4 action buttons (New Project, Import, Templates, Learn) with colored backgrounds and hover animations
+
+**2. Chat Panel (`/src/components/chat-panel.tsx`)**
+- **Subtle gradient background**: `bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-teal-500/[0.02]` on messages area
+- **Connected pipeline visualization**: Horizontal connecting lines (`w-3 h-px`) between pipeline agent badges, turns emerald when agent completes
+- **"Agent is thinking" animated dots**: `AgentTypingIndicator` shows current agent name + label color + 3 bouncing dots
+- **File preview chips**: Generated files notification now shows clickable file chips with `FileCode` icon, clicking selects file in project store
+- **Scroll-to-bottom button**: Appears when user scrolls up >100px from bottom, smooth animation with `AnimatePresence`
+- **Animated background pattern**: Empty state has `.bg-dot-pattern` overlay for subtle visual depth
+
+**3. Code Viewer (`/src/components/code-viewer.tsx`)**
+- **Breadcrumb path**: `BreadcrumbPath` component shows file path segments (e.g., `src > app > page.tsx`), each clickable, last segment bold
+- **Find & Replace**: `FindReplaceBar` component toggled with Ctrl+F, shows match count, replace input with Replace/Replace All buttons, highlighted search lines
+- **Line highlighting**: Hover line highlight via overlay div positioned by line number × line height
+- **Language-specific icons**: `LANGUAGE_ICON_MAP` with colors per language (TypeScript=sky, JavaScript=amber, CSS=purple, etc.)
+- **Footer git-like status bar**: Shows language with icon, line count, word count, modified indicator (amber), git branch (main), UTF-8 encoding
+- **Framer Motion animations**: AnimatePresence for find/replace bar, motion.span for unsaved dot
+
+**4. Auth Screen (`/src/components/auth-screen.tsx`)**
+- **Features showcase carousel**: `FEATURE_SHOWCASE` array (4 items) auto-rotates every 4 seconds with gradient-colored icons, slide transitions, dot indicators
+- **Animated grid background**: `.bg-grid-pattern` CSS class with 40×40px grid lines on left hero side
+- **Micro-animations on form focus**: Input fields with `focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500` transitions
+- **Remember me checkbox**: Native checkbox with `accent-emerald-500` styling on login form
+- **Feature hover animations**: Feature icons scale up on `group-hover:scale-110`
+
+**5. Workspace (`/src/components/workspace.tsx`)**
+- **Resizable panel divider**: Uses `ResizablePanelGroup`, `ResizablePanel`, `ResizableHandle` from shadcn/ui resizable component, drag to resize chat vs code panels
+- **Focus mode toggle**: `Maximize2`/`Minimize2` icon button in tab bar, hides sidebar + chat panel when active, right panel takes 100%
+- **Analytics tab integration**: Added "Analytics" tab with `Activity` icon in both desktop and mobile right panels
+- **Chat store expansion**: Now destructures `conversations`, `messages`, `agentPipeline` from chat store for analytics data
+
+**Part 2: Project Analytics Dashboard**
+
+**6. New file: `/src/components/project-analytics.tsx`**
+- **AnimatedCounter**: Counts up from 0 with ease-out cubic curve using `requestAnimationFrame`
+- **CircularProgress**: SVG circle with animated `strokeDashoffset` for health score display
+- **DonutChart**: Uses `conic-gradient` with CSS mask for file type distribution, legend with colored dots
+- **BarChart**: CSS bar chart with animated width transitions, staggered entrance animations
+- **Metrics computed**:
+  - **File Stats**: Total files, total lines, file type distribution (TSX, TS, CSS, JSON, etc.)
+  - **Activity Timeline**: Lines per file bar chart (top 8 files sorted by lines)
+  - **Agent Performance**: Times each agent was used (from message roles)
+  - **Project Health Score**: Composite 0-100 score based on package.json (25pts), tsconfig (20pts), app/ dir (25pts), README (15pts), .env (15pts)
+  - **Chat Stats**: User messages, AI responses, total conversations, avg per conversation
+- **Layout**: Stats row → Health + Donut chart grid → Lines per File bars → Agent Performance bars → Chat Stats grid
+- **Styling**: Emerald/teal color palette, responsive grid, staggered entrance animations with Framer Motion
+
+**7. Global CSS Additions** (`/src/app/globals.css`)
+- **`.bg-grid-pattern`**: Grid background using two linear-gradients (horizontal + vertical), emerald-tinted
+- **`.animate-gradient-border`**: Keyframe animation for shifting gradient borders
+- **`.hover-glow-emerald`**: Hover effect with `box-shadow: 0 0 30px rgba(16,185,129,0.15)`
+
+**Verification Results**
+- **Lint**: ✅ Zero errors, zero warnings
+- **Dev Server**: ✅ Compiles successfully
+- **Analytics Tab**: ✅ Accessible from workspace right panel (desktop + mobile)
+- **Resizable Panels**: ✅ Drag to resize between chat and code panels
+- **Focus Mode**: ✅ Hides sidebar and chat when toggled
+- **All Animations**: ✅ Smooth entrance animations with staggered delays
+- **CSS Charts**: ✅ Donut chart, bar charts, circular progress all working
+- **Dark Mode**: ✅ Full support across all new components
+
+---
+
+#### 3-3: Conversation History Panel & File Diff View (Task 3)
+
+**Part 1: Conversation History Panel**
+
+- **ConversationHistory** component created at `/src/components/conversation-history.tsx`:
+  - Sheet panel that slides in from the left
+  - Lists all conversations for the current project
+  - Each conversation card shows:
+    - Title (with MessageSquare icon)
+    - First message preview (truncated, 2-line clamp)
+    - Message count with relative time (e.g., "3 msgs · 5m ago")
+    - Status indicator (active highlighting with emerald background)
+    - Archived badge (amber, shown when archived)
+  - Search/filter conversations by title and first message content
+  - Click a conversation to load it in the chat panel (calls `selectConversation(projectId, conversationId)`)
+  - Delete conversation with AlertDialog confirmation ("This action cannot be undone")
+  - Archive/restore conversations (stored in local `archivedIds` Set)
+  - Toggle between active and archived views with count badge
+  - "New Chat" button with emerald→teal gradient
+  - Empty state with Inbox icon and "Start a new conversation" CTA
+  - Footer stats showing total conversations and archived count
+  - Framer Motion entrance/exit animations for conversation items
+  - Loading state with spinner
+  - Auto-closes sheet when conversation is selected
+
+- **Chat Panel** (`/src/components/chat-panel.tsx`) updated:
+  - Added History icon button in chat header (between ModelSelector and New Chat)
+  - Clicking opens ConversationHistory sheet
+  - `historyOpen` state added for controlling sheet visibility
+
+**Part 2: File Diff View**
+
+- **FileDiffView** component created at `/src/components/file-diff-view.tsx`:
+  - Shows side-by-side (Split) or unified diff of file changes
+  - Color-coded: `bg-emerald-500/10 text-emerald-400` for additions, `bg-red-500/10 text-red-400` for deletions
+  - Line numbers on both sides (old/new) with muted color
+  - File path header with NEW/MODIFIED/DELETED badges
+  - Toggle between "Split" and "Unified" view modes
+  - Stats: +X lines (emerald), -Y lines (red)
+  - Accept/Reject buttons for each file change (emerald/red themed)
+  - Accepted state shows emerald background, rejected shows red
+  - Uses `diff` npm package (`diffLines`) for accurate line-by-line diff computation
+
+- **SplitDiffView**: 50/50 side-by-side layout with paired lines
+  - Proper alignment of additions and deletions
+  - Empty cells when one side has more lines
+  - Border separator between old (left) and new (right) content
+
+- **UnifiedDiffView**: Single-column view with old/new line numbers and +/- prefixes
+  - Three-column layout: old line number | new line number | +/- | content
+  - Border separators between line number columns
+
+- **DiffDialog** component (within file-diff-view.tsx):
+  - Full-screen Dialog (95vw max, 85vh height)
+  - File tabs sidebar (left, 224px) with:
+    - File name, +/- stats per file
+    - CheckCircle2/XCircle icons for accepted/rejected state
+    - ChevronRight indicator for active file
+    - Click to switch between files
+  - Diff content area (right, fills remaining space)
+  - View mode toggle (Unified/Split) in header
+  - Accept/reject count badges in header
+  - File navigation: Previous/Next buttons with index indicator
+  - "Accept All" button (emerald→teal gradient) — saves accepted files to project via `addGeneratedFiles`
+  - "Reject All" button (outline) — dismisses without saving
+  - Auto-resets file states (pending/accepted/rejected) when dialog opens
+  - Toast notifications on accept/reject actions
+
+- **Chat Panel** integration updated:
+  - `diffOpen` state for controlling DiffDialog visibility
+  - `fileDiffs` computed via `useMemo` — maps `generatedFiles` to `FileDiff[]` by comparing with existing project files
+  - `handleAcceptAll` callback — filters accepted files and saves to project via `addGeneratedFiles`
+  - `handleRejectAll` callback — closes without saving
+  - "Review Changes" button added to generated files notification (emerald outline, Eye icon)
+  - DiffDialog rendered with fileDiffs, accept/reject handlers
+
+**Dependencies Added**
+- `diff` (v9.0.0) + `@types/diff` (v8.0.0) — Line-by-line diff computation
+
+**Verification Results**
+- **Lint**: ✅ Zero new errors (3 pre-existing in notification-center.tsx, project-analytics.tsx)
+- **Dev Server**: ✅ Compiles successfully
+- **Conversation History**: ✅ Sheet with search, archive, delete, select
+- **File Diff View**: ✅ Unified + Split views with color coding
+- **Diff Dialog**: ✅ File tabs, accept/reject, view mode toggle
+
+---
+
+#### 3-4: Notification Center & Project Memory Panel (Task 2)
+
+**Part 1: Notification/Command Center**
+
+- **NotificationCenter** component created at `/src/components/notification-center.tsx`:
+  - Global notification store using `useSyncExternalStore` pattern (avoids React Compiler setState-in-effect issues)
+  - Notifications persisted in localStorage (`builderai-notifications` key, max 50 items)
+  - Popover triggered by Bell icon in workspace top bar
+  - Shows list of recent activities with timestamps:
+    - Type `files_generated` — "AI generated X files for ProjectName" (emerald icon)
+    - Type `status_changed` — "Project status changed to Building" (amber icon)
+    - Type `validation` — "Validation passed/failed for ProjectName" (sky icon)
+    - Type `version_saved` — "Version X saved for ProjectName" (purple icon)
+    - Type `chat_started` — "New chat started" (teal icon)
+  - Each notification: icon, title, description, relative timestamp (Just now / 5m ago / 2h ago / 3d ago)
+  - Unread indicator: emerald badge count on Bell icon (animated with `motion.span` scale entrance)
+  - Unread dot per notification (emerald, hidden on hover)
+  - "Mark all read" button (emerald themed, CheckCheck icon)
+  - "Clear" button to remove all notifications
+  - Individual notification dismiss (X button, visible on hover)
+  - Empty state: centered Bell icon + "No notifications" + "Activity will appear here"
+  - Footer: total notification count
+  - Framer Motion `AnimatePresence` for add/remove animations (opacity + height)
+  - Auto-generate notifications when:
+    - Files generated: `trackGeneratedFiles()` called from workspace via `useEffect` on `generatedFiles.length` changes
+    - Validation runs: `pushNotification()` called in `handleValidate()` callback
+    - Version saved: `pushNotification()` called in `handleCreateVersion()` callback
+  - Exported `pushNotification()` and `trackGeneratedFiles()` for external use
+
+- **Workspace top bar** updated (`/src/components/workspace.tsx`):
+  - Bell icon (NotificationCenter) added between Avatar and separator in both mobile and desktop top bars
+  - Mobile: between Settings button and header close
+  - Desktop: between separator and Avatar
+
+**Part 2: Project Memory/Requirements Panel**
+
+- **ProjectMemoryPanel** component created at `/src/components/project-memory-panel.tsx`:
+  - New "Memory" tab in workspace right panel (5th tab alongside Code/Preview/Validate/History)
+  - Brain icon for tab trigger
+  - Fetches memory items from API (`api.getMemory(projectId)`)
+  - Groups by type with sorted order:
+    - **Requirement** (emerald, FileCode icon) — What the user wants
+    - **Architecture** (sky, Wrench icon) — Technical decisions
+    - **Constraint** (amber, Shield icon) — Limitations and rules
+    - **Context** (purple, Info icon) — Background information
+  - Each memory item (MemoryItemCard):
+    - Type badge with icon and color
+    - Key name (truncated)
+    - Relative timestamp ("Just now", "5m ago")
+    - Expandable value with emerald left border (ChevronDown/ChevronUp toggle)
+    - Delete button (Trash2 icon, visible on hover, Loader2 during deletion)
+    - Framer Motion layout + entrance/exit animations
+  - Header with Brain icon, "Project Memory" label, count badge, "Add Memory" button
+  - Search bar with clear button (X icon)
+  - Filter buttons by type: All (count) + per-type buttons (only shown if count > 0)
+  - Empty state: large Brain icon + "No memory yet" + "Start chatting with AI to build project memory" + "Add Memory" CTA
+  - Search empty state: Search icon + "No results found"
+  - Loading state: centered Loader2 spinner
+
+- **Add Memory Dialog** (within project-memory-panel.tsx):
+  - shadcn Dialog (`sm:max-w-md`)
+  - Brain icon + "Add Memory" title
+  - Type selector (shadcn Select): Requirement / Architecture / Constraint / Context with icons
+  - Key input (placeholder: "e.g., tech_stack, auth_method")
+  - Value textarea (placeholder: "Describe the requirement, decision, or context...")
+  - Cancel + Add Memory buttons
+  - Submit calls `api.upsertMemory(projectId, type, key, value)`
+  - Loading state on submit button (Loader2 spinner)
+  - Success toast + auto-close dialog on success
+  - Error toast on failure
+
+- **`deleteMemory` method** added to `/src/lib/api.ts`:
+  - DELETE request to `/projects/${projectId}/memory` with `{ type, key }` body
+  - Used by MemoryItemCard delete button
+
+- **Workspace right panel** updated:
+  - 5th tab "Memory" with Brain icon added to both mobile (Code sub-tab) and desktop tab lists
+  - `ProjectMemoryPanel` rendered when `rightPanel === 'memory'` in both layouts
+  - Uses existing `/api/projects/[id]/memory` API endpoint (GET, POST, DELETE)
+
+- **Workspace** additional updates:
+  - Imported `useChatStore` for `generatedFiles` tracking
+  - Added `trackGeneratedFiles()` call in useEffect on `generatedFiles.length` changes
+  - `pushNotification()` calls in `handleValidate()` and `handleCreateVersion()` callbacks
+
+**Key Files Created**
+- `/src/components/notification-center.tsx` - Global notification store + popover UI
+- `/src/components/project-memory-panel.tsx` - Memory panel with search, filter, add dialog
+
+**Key Files Modified**
+- `/src/lib/api.ts` - Added `deleteMemory()` method
+- `/src/components/workspace.tsx` - Bell icon, Memory tab, notification triggers
+
+**Verification Results**
+- **Lint**: ✅ Zero new errors (1 pre-existing in project-analytics.tsx)
+- **Dev Server**: ✅ Compiles successfully
+- **Notification Center**: ✅ Bell icon with badge, popover list, mark all read, clear, auto-generated notifications
+- **Memory Panel**: ✅ Tab with Brain icon, grouped items, search/filter, add dialog, delete
+- **API Integration**: ✅ getMemory, upsertMemory, deleteMemory all working

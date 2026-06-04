@@ -22,7 +22,7 @@ import {
   PanelLeftClose, PanelLeft, FileCode, Shield, Wifi,
   History, Plus, ChevronRight, Download, FolderTree,
   FileText, FileJson, FileType, FolderOpen, Settings2,
-  Rocket, Menu, X
+  Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -31,6 +31,11 @@ import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { MobileNav, type MobileTab } from '@/components/mobile-nav'
+import { NotificationCenter, pushNotification, trackGeneratedFiles } from '@/components/notification-center'
+import { ProjectMemoryPanel } from '@/components/project-memory-panel'
+import { ProjectAnalytics } from '@/components/project-analytics'
+import { useChatStore } from '@/stores/chat-store'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -57,6 +62,7 @@ interface VersionData {
 export function Workspace() {
   const { currentProject, files, currentFile, selectFile, clearCurrentProject, refreshFiles } = useProjectStore()
   const { user, logout } = useAuthStore()
+  const { generatedFiles, conversations, messages, agentPipeline } = useChatStore()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [rightPanel, setRightPanel] = useState('code')
@@ -71,6 +77,7 @@ export function Workspace() {
   const [creatingVersion, setCreatingVersion] = useState(false)
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [focusMode, setFocusMode] = useState(false)
 
   // Mobile state
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat')
@@ -141,6 +148,13 @@ export function Workspace() {
     return () => clearInterval(interval)
   }, [refreshFiles])
 
+  // Track generated files for notifications
+  useEffect(() => {
+    if (generatedFiles.length > 0 && currentProject) {
+      trackGeneratedFiles(generatedFiles.length, currentProject.name)
+    }
+  }, [generatedFiles.length, currentProject])
+
   // Load versions when History tab is selected
   useEffect(() => {
     if (rightPanel === 'history' && currentProject) {
@@ -166,9 +180,26 @@ export function Workspace() {
     setValidating(true)
     try {
       const data = await api.validateProject(currentProject.id)
-      setValidationResults(data?.results || (Array.isArray(data) ? data : []))
+      const results = data?.results || (Array.isArray(data) ? data : [])
+      setValidationResults(results)
+      const passCount = results.filter((r: any) => r.status === 'pass').length
+      const failCount = results.filter((r: any) => r.status === 'fail').length
+      pushNotification({
+        type: 'validation',
+        title: failCount === 0 ? 'Validation passed' : 'Validation completed',
+        description: failCount === 0
+          ? `All ${passCount} checks passed for ${currentProject.name}`
+          : `${passCount} passed, ${failCount} failed for ${currentProject.name}`,
+        projectName: currentProject.name,
+      })
     } catch {
       setValidationResults([{ status: 'fail', message: 'Validation request failed' }])
+      pushNotification({
+        type: 'validation',
+        title: 'Validation failed',
+        description: `Could not validate ${currentProject.name}`,
+        projectName: currentProject.name,
+      })
     } finally {
       setValidating(false)
     }
@@ -192,6 +223,12 @@ export function Workspace() {
     try {
       await api.createVersion(currentProject.id, `Version ${versions.length + 1}`)
       toast.success('Version saved')
+      pushNotification({
+        type: 'version_saved',
+        title: 'Version saved',
+        description: `Version ${versions.length + 1} saved for ${currentProject.name}`,
+        projectName: currentProject.name,
+      })
       await loadVersions()
     } catch {
       toast.error('Failed to create version')
@@ -260,6 +297,7 @@ export function Workspace() {
           >
             <Settings2 className="w-4 h-4 text-muted-foreground" />
           </Button>
+          <NotificationCenter />
         </header>
 
         {/* Project Settings Dialog */}
@@ -413,6 +451,14 @@ export function Workspace() {
                       <History className="w-3 h-3 mr-1" />
                       History
                     </TabsTrigger>
+                    <TabsTrigger value="memory" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <Brain className="w-3 h-3 mr-1" />
+                      Memory
+                    </TabsTrigger>
+                    <TabsTrigger value="analytics" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <Activity className="w-3 h-3 mr-1" />
+                      Analytics
+                    </TabsTrigger>
                   </TabsList>
                 </div>
                 <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
@@ -438,6 +484,18 @@ export function Workspace() {
                     onRefresh={loadVersions}
                     expandedVersions={expandedVersions}
                     onToggleExpand={toggleVersionExpand}
+                  />
+                </TabsContent>
+                <TabsContent value="memory" className="flex-1 m-0 overflow-hidden">
+                  <ProjectMemoryPanel projectId={currentProject.id} />
+                </TabsContent>
+                <TabsContent value="analytics" className="flex-1 m-0 overflow-hidden">
+                  <ProjectAnalytics
+                    files={files}
+                    conversations={conversations}
+                    messages={messages}
+                    agentPipeline={agentPipeline}
+                    projectId={currentProject.id}
                   />
                 </TabsContent>
               </Tabs>
@@ -529,6 +587,7 @@ export function Workspace() {
             <span className="hidden sm:inline">Deploy</span>
           </Button>
           <Separator orientation="vertical" className="h-5" />
+          <NotificationCenter />
           <Avatar className="h-6 w-6">
             <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
               {user?.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -551,47 +610,59 @@ export function Workspace() {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* File Tree Sidebar - hidden on tablet when collapsed */}
-        <div
-          className="border-r flex-shrink-0 overflow-hidden transition-all duration-200 hidden md:block"
-          style={{ width: sidebarOpen ? 220 : 0 }}
-        >
-          <div className="h-full w-[220px] flex flex-col">
-            <div className="px-3 py-2 border-b flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Files</span>
-              <Badge variant="secondary" className="text-[10px] px-1.5">
-                {files.length}
-              </Badge>
+      <div className={`flex-1 flex overflow-hidden ${focusMode ? 'relative' : ''}`}>
+        {/* File Tree Sidebar - hidden on tablet when collapsed or focus mode */}
+        {!focusMode && (
+          <>
+            <div
+              className="border-r flex-shrink-0 overflow-hidden transition-all duration-200 hidden md:block"
+              style={{ width: sidebarOpen ? 220 : 0 }}
+            >
+              <div className="h-full w-[220px] flex flex-col">
+                <div className="px-3 py-2 border-b flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Files</span>
+                  <Badge variant="secondary" className="text-[10px] px-1.5">
+                    {files.length}
+                  </Badge>
+                </div>
+                <FileTree
+                  files={files}
+                  selectedFileId={currentFile?.id || null}
+                  onSelectFile={selectFile}
+                />
+              </div>
             </div>
-            <FileTree
-              files={files}
-              selectedFileId={currentFile?.id || null}
-              onSelectFile={selectFile}
-            />
-          </div>
-        </div>
 
-        {/* Toggle Sidebar */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="w-5 flex-shrink-0 border-r hidden md:flex items-center justify-center hover:bg-muted/50 transition-colors"
-          title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-        >
-          {sidebarOpen ? (
-            <PanelLeftClose className="w-3 h-3 text-muted-foreground" />
-          ) : (
-            <PanelLeft className="w-3 h-3 text-muted-foreground" />
+            {/* Toggle Sidebar */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="w-5 flex-shrink-0 border-r hidden md:flex items-center justify-center hover:bg-muted/50 transition-colors"
+              title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="w-3 h-3 text-muted-foreground" />
+              ) : (
+                <PanelLeft className="w-3 h-3 text-muted-foreground" />
+              )}
+            </button>
+          </>
+        )}
+
+        {/* Resizable Panels */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* Chat Panel */}
+          {!focusMode && (
+            <>
+              <ResizablePanel defaultSize={55} minSize={30}>
+                <ChatPanel />
+              </ResizablePanel>
+              <ResizableHandle withHandle className="bg-border/50 hover:bg-emerald-500/20 transition-colors" />
+            </>
           )}
-        </button>
 
-        {/* Chat Panel - responsive width */}
-        <div className="flex-1 min-w-0 border-r md:w-1/2 lg:flex-1">
-          <ChatPanel />
-        </div>
-
-        {/* Right Panel - responsive width */}
-        <div className="hidden md:flex md:w-1/2 lg:w-[45%] flex-shrink-0 flex-col">
+          {/* Right Panel */}
+          <ResizablePanel defaultSize={focusMode ? 100 : 45} minSize={30}>
+            <div className="h-full flex flex-col">
           <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
             <div className="border-b px-2 flex items-center">
               <TabsList className="h-9 bg-transparent">
@@ -623,6 +694,28 @@ export function Workspace() {
                   <History className="w-3 h-3 mr-1" />
                   History
                 </TabsTrigger>
+                <TabsTrigger
+                  value="memory"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
+                  <Brain className="w-3 h-3 mr-1" />
+                  Memory
+                </TabsTrigger>
+                <TabsTrigger
+                  value="analytics"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
+                  <Activity className="w-3 h-3 mr-1" />
+                  Analytics
+                </TabsTrigger>
+                {/* Focus mode toggle */}
+                <button
+                  onClick={() => setFocusMode(!focusMode)}
+                  className={`ml-2 p-1 rounded transition-colors ${focusMode ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                  title={focusMode ? 'Exit focus mode' : 'Focus mode'}
+                >
+                  {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                </button>
               </TabsList>
             </div>
             <AnimatePresence mode="wait">
@@ -662,10 +755,24 @@ export function Workspace() {
                     onToggleExpand={toggleVersionExpand}
                   />
                 )}
+                {rightPanel === 'memory' && (
+                  <ProjectMemoryPanel projectId={currentProject.id} />
+                )}
+                {rightPanel === 'analytics' && (
+                  <ProjectAnalytics
+                    files={files}
+                    conversations={conversations}
+                    messages={messages}
+                    agentPipeline={agentPipeline}
+                    projectId={currentProject.id}
+                  />
+                )}
               </motion.div>
             </AnimatePresence>
           </Tabs>
-        </div>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       {/* Desktop Status Bar */}

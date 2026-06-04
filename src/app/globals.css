@@ -300,3 +300,42 @@ a:focus-visible {
   background-image: radial-gradient(circle, rgba(52, 211, 153, 0.06) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+/* ─── Grid Pattern Background ─────────────────────────────────────────── */
+
+.bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(16, 185, 129, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.dark .bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(52, 211, 153, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(52, 211, 153, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ─── Animated Gradient Border ─────────────────────────────────────────── */
+
+@keyframes gradient-border {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient-border {
+  background-size: 200% 200%;
+  animation: gradient-border 3s ease infinite;
+}
+
+/* ─── Glow Hover Effect ──────────────────────────────────────────────── */
+
+.hover-glow-emerald {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-glow-emerald:hover {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+}

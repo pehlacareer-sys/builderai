@@ -11,7 +11,8 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Zap, ArrowRight, Loader2, Bot, Layers, Sparkles, Rocket,
-  Code2, Shield, Globe, Keyboard, Check, Quote, Github
+  Code2, Shield, Globe, Keyboard, Check, Quote, Github,
+  ChevronLeft, ChevronRight
 } from 'lucide-react'
 
 const FEATURES = [
@@ -38,6 +39,34 @@ const FEATURES = [
     title: 'One-Click Deploy',
     description: 'Ship to production instantly with integrated deployment pipeline.',
     color: 'text-sky-600 bg-sky-100 dark:bg-sky-950/40',
+  },
+]
+
+// Features for the carousel
+const FEATURE_SHOWCASE = [
+  {
+    title: 'Multi-Agent Pipeline',
+    description: 'Five specialized AI agents work together to build your app from start to finish.',
+    gradient: 'from-violet-500 to-purple-600',
+    icon: Bot,
+  },
+  {
+    title: 'Real-time Code Generation',
+    description: 'Watch as AI generates production-quality code in real time with live preview.',
+    gradient: 'from-emerald-500 to-teal-600',
+    icon: Code2,
+  },
+  {
+    title: 'Smart Code Review',
+    description: 'Automated code review catches bugs, suggests improvements, and enforces best practices.',
+    gradient: 'from-amber-500 to-orange-600',
+    icon: Shield,
+  },
+  {
+    title: 'Instant Deployment',
+    description: 'One click to deploy your application to production with zero configuration.',
+    gradient: 'from-sky-500 to-blue-600',
+    icon: Rocket,
   },
 ]
 
@@ -71,7 +100,6 @@ function AnimatedCounter({ value, suffix, duration = 2000 }: { value: number; su
   const [hasStarted, setHasStarted] = useState(false)
 
   useEffect(() => {
-    // Start after a short delay for visual effect
     const startTimer = setTimeout(() => setHasStarted(true), 500)
     return () => clearTimeout(startTimer)
   }, [])
@@ -95,10 +123,6 @@ function AnimatedCounter({ value, suffix, duration = 2000 }: { value: number; su
 
     return () => clearInterval(timer)
   }, [hasStarted, value, duration])
-
-  const formattedValue = value >= 1000
-    ? `${(count / 1000).toFixed(count >= value ? 0 : 0)}K`
-    : count.toString()
 
   return (
     <span>
@@ -150,16 +174,26 @@ export function AuthScreen() {
   const [activeTab, setActiveTab] = useState('login')
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [registerName, setRegisterName] = useState('')
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
   const [testimonialIndex, setTestimonialIndex] = useState(0)
+  const [featureIndex, setFeatureIndex] = useState(0)
 
   // Rotate testimonials
   useEffect(() => {
     const timer = setInterval(() => {
       setTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length)
     }, 5000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Auto-rotate feature carousel
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFeatureIndex((prev) => (prev + 1) % FEATURE_SHOWCASE.length)
+    }, 4000)
     return () => clearInterval(timer)
   }, [])
 
@@ -208,14 +242,19 @@ export function AuthScreen() {
             </span>
           </div>
 
-          {/* Hero Text */}
-          <h1 className="text-4xl xl:text-5xl font-bold tracking-tight leading-tight mb-4">
-            Build websites with
-            <br />
-            <span className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent animate-gradient-shift">
-              AI superpowers
-            </span>
-          </h1>
+          {/* Animated Grid Background on hero */}
+          <div className="relative">
+            <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] dark:opacity-[0.02] pointer-events-none" />
+
+            {/* Hero Text */}
+            <h1 className="text-4xl xl:text-5xl font-bold tracking-tight leading-tight mb-4 relative">
+              Build websites with
+              <br />
+              <span className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent animate-gradient-shift">
+                AI superpowers
+              </span>
+            </h1>
+          </div>
           <p className="text-lg text-muted-foreground mb-10 max-w-lg">
             Describe what you want, and our AI agents will plan, code, review, and deploy
             production-ready Next.js applications — all from a simple chat.
@@ -229,9 +268,9 @@ export function AuthScreen() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 + i * 0.1 }}
-                className="flex items-start gap-3"
+                className="flex items-start gap-3 group"
               >
-                <div className={`p-2 rounded-lg ${feature.color} flex-shrink-0`}>
+                <div className={`p-2 rounded-lg ${feature.color} flex-shrink-0 transition-transform group-hover:scale-110`}>
                   <feature.icon className="w-4 h-4" />
                 </div>
                 <div>
@@ -254,6 +293,49 @@ export function AuthScreen() {
                 <div className="text-xs text-muted-foreground">{metric.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* Features Showcase Carousel */}
+          <div className="mb-8">
+            <div className="relative overflow-hidden rounded-xl border border-border/30 bg-card/40 backdrop-blur-sm">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={featureIndex}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ duration: 0.4 }}
+                  className="p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${FEATURE_SHOWCASE[featureIndex].gradient} flex items-center justify-center flex-shrink-0 shadow-lg`}>
+                      {(() => {
+                        const FIcon = FEATURE_SHOWCASE[featureIndex].icon
+                        return <FIcon className="w-5 h-5 text-white" />
+                      })()}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold">{FEATURE_SHOWCASE[featureIndex].title}</h4>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        {FEATURE_SHOWCASE[featureIndex].description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+              {/* Carousel indicators */}
+              <div className="flex items-center justify-center gap-1 pb-3">
+                {FEATURE_SHOWCASE.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setFeatureIndex(i)}
+                    className={`w-1.5 h-1.5 rounded-full transition-all ${
+                      i === featureIndex ? 'bg-emerald-500 w-4' : 'bg-muted-foreground/30'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Rotating Testimonial */}
@@ -381,7 +463,7 @@ export function AuthScreen() {
                             placeholder="you@example.com"
                             value={loginEmail}
                             onChange={(e) => setLoginEmail(e.target.value)}
-                            className="h-10"
+                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                             required
                           />
                         </div>
@@ -393,9 +475,22 @@ export function AuthScreen() {
                             placeholder="••••••••"
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
-                            className="h-10"
+                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                             required
                           />
+                        </div>
+                        {/* Remember me checkbox */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="remember-me"
+                            checked={rememberMe}
+                            onChange={(e) => setRememberMe(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-border text-emerald-500 focus:ring-emerald-500/20 accent-emerald-500"
+                          />
+                          <Label htmlFor="remember-me" className="text-xs text-muted-foreground cursor-pointer">
+                            Remember me
+                          </Label>
                         </div>
                         <AnimatePresence>
                           {error && (
@@ -411,7 +506,7 @@ export function AuthScreen() {
                         </AnimatePresence>
                         <Button
                           type="submit"
-                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
+                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40"
                           disabled={isLoading}
                         >
                           {isLoading ? (
@@ -482,7 +577,7 @@ export function AuthScreen() {
                             placeholder="Your name"
                             value={registerName}
                             onChange={(e) => setRegisterName(e.target.value)}
-                            className="h-10"
+                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                             required
                           />
                         </div>
@@ -494,7 +589,7 @@ export function AuthScreen() {
                             placeholder="you@example.com"
                             value={registerEmail}
                             onChange={(e) => setRegisterEmail(e.target.value)}
-                            className="h-10"
+                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                             required
                           />
                         </div>
@@ -506,7 +601,7 @@ export function AuthScreen() {
                             placeholder="••••••••"
                             value={registerPassword}
                             onChange={(e) => setRegisterPassword(e.target.value)}
-                            className="h-10"
+                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                             required
                             minLength={4}
                           />
@@ -526,7 +621,7 @@ export function AuthScreen() {
                         </AnimatePresence>
                         <Button
                           type="submit"
-                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25"
+                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40"
                           disabled={isLoading}
                         >
                           {isLoading ? (
@@ -632,3 +727,5 @@ export function AuthScreen() {
     </div>
   )
 }
+
+import { toast } from 'sonner'

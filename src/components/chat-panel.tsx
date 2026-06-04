@@ -15,7 +15,8 @@ import {
   Send, StopCircle, Loader2, Bot, User, Sparkles,
   Brain, Code2, ShieldCheck, TestTube, Rocket,
   Plus, MessageSquare, Code, Keyboard,
-  Copy, Check, ThumbsUp, ThumbsDown, RefreshCw, Clock
+  Copy, Check, ThumbsUp, ThumbsDown, RefreshCw, Clock,
+  ChevronDown, FileCode
 } from 'lucide-react'
 import { ModelSelector } from '@/components/model-selector'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
@@ -30,25 +31,36 @@ const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; lab
   assistant: { icon: Bot, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30', label: 'AI' },
 }
 
-// Typing indicator: three bouncing dots
-function TypingIndicator() {
+// Typing indicator: agent name + animated dots
+function AgentTypingIndicator() {
+  const { currentAgent } = useChatStore()
+  const agentLabel = currentAgent?.agent
+    ? AGENT_CONFIG[currentAgent.agent]?.label || 'AI'
+    : 'AI'
+  const agentColor = currentAgent?.agent
+    ? AGENT_CONFIG[currentAgent.agent]?.color || 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+    : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+
   return (
     <div className="flex gap-2.5">
       <Avatar className="h-6 w-6 flex-shrink-0 mt-1">
-        <AvatarFallback className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500 text-[10px]">
+        <AvatarFallback className={`${agentColor} text-[10px]`}>
           <Bot className="w-3 h-3" />
         </AvatarFallback>
       </Avatar>
-      <div className="inline-flex items-center gap-1 rounded-xl px-4 py-3 bg-muted/50">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '0ms' }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '200ms' }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '400ms' }} />
+      <div className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 bg-muted/50">
+        <span className={`text-[11px] font-medium ${agentColor.split(' ')[0]}`}>{agentLabel} is thinking</span>
+        <div className="flex items-center gap-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '0ms' }} />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '200ms' }} />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '400ms' }} />
+        </div>
       </div>
     </div>
   )
 }
 
-// Animated pipeline progress bar
+// Animated pipeline progress with connected lines
 function AgentStatusBar() {
   const { agentPipeline, isProcessing, currentAgent } = useChatStore()
 
@@ -62,7 +74,7 @@ function AgentStatusBar() {
   return (
     <div className="border-t bg-muted/30 px-3 py-2">
       {/* Progress bar */}
-      <div className="h-0.5 w-full bg-muted rounded-full mb-2 overflow-hidden">
+      <div className="h-0.5 w-full bg-muted rounded-full mb-2.5 overflow-hidden">
         <motion.div
           className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
           initial={{ width: 0 }}
@@ -70,32 +82,40 @@ function AgentStatusBar() {
           transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
-      <div className="flex items-center gap-1.5 overflow-x-auto">
-        <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Pipeline:</span>
-        {pipelineOrder.map((agentKey) => {
+      {/* Connected pipeline */}
+      <div className="flex items-center gap-0 overflow-x-auto">
+        <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap mr-1.5">Pipeline:</span>
+        {pipelineOrder.map((agentKey, i) => {
           const config = AGENT_CONFIG[agentKey]
           const status = agentPipeline.find((a) => a.agent === agentKey)
           const isActive = currentAgent?.agent === agentKey
           const isDone = status?.status === 'complete'
 
           return (
-            <motion.div
-              key={agentKey}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] whitespace-nowrap transition-all ${
-                isActive
-                  ? `${config.color} font-medium ring-1 ring-current/20`
-                  : isDone
-                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              <config.icon className="w-2.5 h-2.5" />
-              <span>{config.label}</span>
-              {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-              {isDone && <span className="text-[8px]">✓</span>}
-            </motion.div>
+            <div key={agentKey} className="flex items-center">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] whitespace-nowrap transition-all ${
+                  isActive
+                    ? `${config.color} font-medium ring-1 ring-current/20`
+                    : isDone
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                <config.icon className="w-2.5 h-2.5" />
+                <span>{config.label}</span>
+                {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                {isDone && <span className="text-[8px]">✓</span>}
+              </motion.div>
+              {/* Connecting line between agents */}
+              {i < pipelineOrder.length - 1 && (
+                <div className={`w-3 h-px mx-0.5 flex-shrink-0 transition-colors ${
+                  isDone ? 'bg-emerald-400' : 'bg-muted-foreground/20'
+                }`} />
+              )}
+            </div>
           )
         })}
       </div>
@@ -271,6 +291,7 @@ export function ChatPanel() {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   useEffect(() => {
     if (currentProject) {
@@ -278,11 +299,24 @@ export function ChatPanel() {
     }
   }, [currentProject, loadConversations])
 
-  useEffect(() => {
+  // Auto-scroll to bottom
+  const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, isProcessing])
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, isProcessing, scrollToBottom])
+
+  // Detect when user scrolls up to show scroll-to-bottom button
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+    setShowScrollBtn(distanceFromBottom > 100)
+  }, [])
 
   useEffect(() => {
     if (generatedFiles.length > 0 && currentProject) {
@@ -389,105 +423,146 @@ export function ChatPanel() {
         </div>
       )}
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scroll-smooth">
-        {messages.length === 0 && !isProcessing && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-4 ring-1 ring-emerald-500/10">
-              <Bot className="w-8 h-8 text-emerald-500" />
-            </div>
-            <h3 className="text-lg font-semibold">AI Website Builder</h3>
-            <p className="text-xs text-muted-foreground mt-1.5 max-w-xs leading-relaxed">
-              Describe what you want to build. Our AI agents will plan, code, review, test, and prepare your app for deployment.
-            </p>
-            <div className="mt-4 w-full max-w-xs space-y-2">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Try these prompts</p>
-              {[
-                { text: 'Build a blog with markdown support', icon: '📝' },
-                'Create an e-commerce landing page',
-                'Make a task management dashboard',
-                'Build a portfolio website with dark mode',
-              ].map((suggestion, i) => (
-                <button
-                  key={i}
-                  onClick={() => setInput(typeof suggestion === 'string' ? suggestion : suggestion.text)}
-                  className="w-full text-left px-3 py-2 text-xs rounded-lg border border-border/50 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all hover:shadow-sm group"
-                >
-                  <Sparkles className="w-3 h-3 inline mr-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
-                  {typeof suggestion === 'string' ? suggestion : suggestion.text}
-                </button>
-              ))}
-            </div>
+      {/* Messages Area - with subtle gradient background */}
+      <div className="relative flex-1 overflow-hidden">
+        {/* Subtle gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-teal-500/[0.02] dark:from-emerald-500/[0.01] dark:to-teal-500/[0.01] pointer-events-none" />
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto p-3 space-y-3 scroll-smooth relative"
+          onScroll={handleScroll}
+        >
+          {messages.length === 0 && !isProcessing && (
+            <div className="flex flex-col items-center justify-center h-full text-center relative">
+              {/* Animated background pattern */}
+              <div className="absolute inset-0 bg-dot-pattern opacity-40 pointer-events-none" />
 
-            {/* Command palette style hints */}
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/50 border border-border/30">
-                <Keyboard className="w-2.5 h-2.5" />
-                <kbd className="font-mono">Ctrl+Enter</kbd> to send
-              </span>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/50 border border-border/30">
-                <kbd className="font-mono">Shift+Enter</kbd> new line
-              </span>
-            </div>
+              <div className="relative z-10">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-4 ring-1 ring-emerald-500/10">
+                  <Bot className="w-8 h-8 text-emerald-500" />
+                </div>
+                <h3 className="text-lg font-semibold">AI Website Builder</h3>
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-xs leading-relaxed">
+                  Describe what you want to build. Our AI agents will plan, code, review, test, and prepare your app for deployment.
+                </p>
+                <div className="mt-4 w-full max-w-xs space-y-2">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Try these prompts</p>
+                  {[
+                    { text: 'Build a blog with markdown support', icon: '📝' },
+                    'Create an e-commerce landing page',
+                    'Make a task management dashboard',
+                    'Build a portfolio website with dark mode',
+                  ].map((suggestion, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setInput(typeof suggestion === 'string' ? suggestion : suggestion.text)}
+                      className="w-full text-left px-3 py-2 text-xs rounded-lg border border-border/50 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all hover:shadow-sm group"
+                    >
+                      <Sparkles className="w-3 h-3 inline mr-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                      {typeof suggestion === 'string' ? suggestion : suggestion.text}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="mt-4 flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              5 AI agents ready
-            </div>
-          </div>
-        )}
+                {/* Command palette style hints */}
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/50 border border-border/30">
+                    <Keyboard className="w-2.5 h-2.5" />
+                    <kbd className="font-mono">Ctrl+Enter</kbd> to send
+                  </span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/50 border border-border/30">
+                    <kbd className="font-mono">Shift+Enter</kbd> new line
+                  </span>
+                </div>
 
+                <div className="mt-4 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  5 AI agents ready
+                </div>
+              </div>
+            </div>
+          )}
+
+          <AnimatePresence>
+            {messages.map((msg, i) => (
+              <MessageBubble
+                key={msg.id || i}
+                message={msg}
+                isLastAiMessage={i === lastAiMessageIndex && msg.role !== 'user'}
+              />
+            ))}
+          </AnimatePresence>
+
+          {/* Typing indicator with agent name */}
+          {isProcessing && messages.length > 0 && (
+            <AgentTypingIndicator />
+          )}
+
+          {/* Error */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-destructive/10 text-destructive text-xs p-2.5 rounded-lg"
+            >
+              {error}
+              <Button variant="ghost" size="sm" onClick={clearError} className="ml-2 h-5 text-[10px] min-h-[44px] sm:min-h-0">
+                Dismiss
+              </Button>
+            </motion.div>
+          )}
+
+          {/* Generated files notification with clickable file chips */}
+          {generatedFiles.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-2.5 rounded-lg"
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Code className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                  {generatedFiles.length} files generated
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {generatedFiles.map((f) => (
+                  <button
+                    key={f.path}
+                    onClick={() => {
+                      // Try to select the file in the project store
+                      const store = useProjectStore.getState()
+                      const file = store.files.find(file => file.path === f.path)
+                      if (file) {
+                        store.selectFile(file.id)
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-mono bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors cursor-pointer border border-emerald-200/50 dark:border-emerald-800/50"
+                  >
+                    <FileCode className="w-2.5 h-2.5" />
+                    {f.path}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </div>
+
+        {/* Scroll to bottom button */}
         <AnimatePresence>
-          {messages.map((msg, i) => (
-            <MessageBubble
-              key={msg.id || i}
-              message={msg}
-              isLastAiMessage={i === lastAiMessageIndex && msg.role !== 'user'}
-            />
-          ))}
+          {showScrollBtn && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={scrollToBottom}
+              className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-background border shadow-md flex items-center justify-center hover:bg-muted transition-colors z-10"
+              title="Scroll to bottom"
+            >
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            </motion.button>
+          )}
         </AnimatePresence>
-
-        {/* Typing indicator */}
-        {isProcessing && messages.length > 0 && (
-          <TypingIndicator />
-        )}
-
-        {/* Error */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="bg-destructive/10 text-destructive text-xs p-2.5 rounded-lg"
-          >
-            {error}
-            <Button variant="ghost" size="sm" onClick={clearError} className="ml-2 h-5 text-[10px]">
-              Dismiss
-            </Button>
-          </motion.div>
-        )}
-
-        {/* Generated files notification */}
-        {generatedFiles.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-2.5 rounded-lg"
-          >
-            <div className="flex items-center gap-1.5 mb-1">
-              <Code className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
-                {generatedFiles.length} files generated
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {generatedFiles.map((f) => (
-                <Badge key={f.path} variant="secondary" className="text-[9px] px-1 py-0">
-                  {f.path}
-                </Badge>
-              ))}
-            </div>
-          </motion.div>
-        )}
       </div>
 
       {/* Agent Status Bar */}

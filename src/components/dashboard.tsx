@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { api } from '@/lib/api'
@@ -18,7 +19,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, FolderKanban, Clock, ArrowRight, Loader2,
   Globe, Zap, LogOut, Trash2, Sparkles, Layers, Rocket, Bot,
-  FileCode, Search, LayoutGrid, List, Download
+  FileCode, Search, LayoutGrid, List, Download,
+  ChevronRight, Upload, BookOpen, Activity
 } from 'lucide-react'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -42,6 +44,77 @@ const STATUS_ICONS: Record<string, React.ElementType> = {
   deployed: Globe,
 }
 
+// ─── Animated Counter for Stats ────────────────────────────────────────────
+
+function StatCounter({ value, duration = 1200 }: { value: number; duration?: number }) {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    let start = 0
+    const startTime = performance.now()
+    const step = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const current = Math.floor(eased * value)
+      setCount(current)
+      if (progress < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [value, duration])
+
+  return <span>{count}</span>
+}
+
+// ─── Activity Feed Item ────────────────────────────────────────────────────
+
+function getRelativeTime(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.floor(diffHr / 24)
+  if (diffDay < 7) return `${diffDay}d ago`
+  return date.toLocaleDateString()
+}
+
+function getActivityIcon(action: string): React.ElementType {
+  if (action === 'created') return Plus
+  if (action === 'updated') return FileCode
+  if (action === 'deployed') return Globe
+  return Activity
+}
+
+// ─── Dashboard Skeleton Shimmer ────────────────────────────────────────────
+
+function DashboardSkeletonShimmer() {
+  return (
+    <div className="space-y-6 animate-shimmer">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+        <Skeleton className="h-10 w-32" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 rounded-lg" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-40 rounded-lg" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const { user, logout } = useAuthStore()
   const { projects, loadProjects, createProject, selectProject, deleteProject } = useProjectStore()
@@ -51,7 +124,14 @@ export function Dashboard() {
   const [creating, setCreating] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [loading, setLoading] = useState(true)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Simulate skeleton loading on initial mount
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 800)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Keyboard shortcuts for dashboard
   useKeyboardShortcuts({
@@ -96,6 +176,15 @@ export function Dashboard() {
 
   const totalFiles = projects.reduce((sum, p) => sum + (p.files?.length || 0), 0)
 
+  // ─── Recent Activity: Last 5 actions ────────────────────────────────
+  const recentActivity = projects
+    .flatMap(p => [
+      { id: p.id, name: p.name, action: 'created', date: p.createdAt, status: p.status },
+      { id: p.id, name: p.name, action: 'updated', date: p.updatedAt, status: p.status },
+    ])
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5)
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -128,175 +217,279 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 w-full">
-        {/* Hero Section with Gradient Background */}
-        <div className="mb-6 sm:mb-8 relative">
-          <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none" />
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 relative"
-          >
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-                Welcome back, {user?.name?.split(' ')[0] || 'Developer'} 👋
-              </h1>
-              <p className="text-sm sm:text-base text-muted-foreground mt-1">
-                Build websites with AI agents. Chat, generate, and deploy.
-              </p>
-            </div>
-            <Button
-              onClick={() => setShowCreate(true)}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 min-h-[44px]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Project
-            </Button>
-          </motion.div>
-        </div>
-
-        {/* Stats with better styling */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-6 sm:mb-8">
-          {[
-            { label: 'Total Projects', value: projects.length, icon: FolderKanban, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
-            { label: 'Deployed', value: projects.filter(p => p.status === 'deployed').length, icon: Globe, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30', border: 'border-teal-200/50 dark:border-teal-800/50' },
-            { label: 'In Progress', value: projects.filter(p => p.status === 'building').length, icon: Clock, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200/50 dark:border-amber-800/50' },
-            { label: 'Total Files', value: totalFiles, icon: FileCode, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.08 }}
-            >
-              <Card className={`hover:shadow-md transition-all border ${stat.border}`}>
-                <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
-                  <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl ${stat.color} flex-shrink-0`}>
-                    <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-lg sm:text-2xl font-bold">{stat.value}</p>
-                    <p className="text-[9px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* How It Works - show when no projects */}
-        {projects.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mb-6 sm:mb-8"
-          >
-            <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">How It Works</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {[
-                { icon: Bot, step: '1', title: 'Describe', desc: 'Tell AI what you want to build', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
-                { icon: Layers, step: '2', title: 'Plan', desc: 'AI creates an architecture plan', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
-                { icon: Sparkles, step: '3', title: 'Generate', desc: 'Code is generated and reviewed', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200/50 dark:border-amber-800/50' },
-                { icon: Rocket, step: '4', title: 'Deploy', desc: 'One-click deploy to production', color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/30', border: 'border-sky-200/50 dark:border-sky-800/50' },
-              ].map((item) => (
-                <Card key={item.step} className={`text-center hover:shadow-md transition-all border ${item.border}`}>
-                  <CardContent className="p-3 sm:p-4">
-                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl ${item.color} flex items-center justify-center mx-auto mb-2 sm:mb-3`}>
-                      <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium mb-1">STEP {item.step}</div>
-                    <h3 className="font-semibold text-sm">{item.title}</h3>
-                    <p className="text-xs text-muted-foreground mt-1">{item.desc}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Projects Header with Search and View Toggle */}
-        {projects.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-2 sm:gap-4">
-            <h2 className="text-base sm:text-lg font-semibold flex-shrink-0">Your Projects</h2>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1 sm:max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Search projects..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 sm:h-8 pl-8 text-xs sm:text-sm min-h-[44px] sm:min-h-0"
-                />
-              </div>
-              <div className="flex border rounded-md overflow-hidden flex-shrink-0">
-                <Button
-                  variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-9 w-9 sm:h-7 sm:w-7 rounded-none min-h-[44px] sm:min-h-0"
-                  onClick={() => setViewMode('grid')}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </Button>
-                <Button
-                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-9 w-9 sm:h-7 sm:w-7 rounded-none min-h-[44px] sm:min-h-0"
-                  onClick={() => setViewMode('list')}
-                >
-                  <List className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Projects Grid/List */}
-        {projects.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-10 sm:py-12"
-          >
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 flex items-center justify-center mx-auto mb-3 sm:mb-4">
-              <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-500" />
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold">No projects yet</h3>
-            <p className="text-sm text-muted-foreground mt-1 mb-4">
-              Create your first project to start building with AI
-            </p>
-            <Button
-              onClick={() => setShowCreate(true)}
-              className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Your First Project
-            </Button>
-          </motion.div>
+        {loading ? (
+          <DashboardSkeletonShimmer />
         ) : (
           <>
-            {filteredProjects.length === 0 && searchQuery && (
-              <div className="text-center py-8">
-                <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No projects match &quot;{searchQuery}&quot;</p>
+            {/* Hero Section with Gradient Background */}
+            <div className="mb-6 sm:mb-8 relative">
+              <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -top-4 right-0 w-48 h-48 bg-teal-500/4 dark:bg-teal-500/2 rounded-full blur-3xl pointer-events-none" />
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 relative"
+              >
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                    Welcome back, {user?.name?.split(' ')[0] || 'Developer'} 👋
+                  </h1>
+                  <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                    Build websites with AI agents. Chat, generate, and deploy.
+                  </p>
+                </div>
+                {/* New Project button with animated gradient border */}
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-400 via-teal-500 to-emerald-400 rounded-lg opacity-50 group-hover:opacity-100 blur-sm animate-gradient-shift transition-opacity" />
+                  <Button
+                    onClick={() => setShowCreate(true)}
+                    className="relative bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 min-h-[44px] hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Project
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Stats with animated counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-6 sm:mb-8">
+              {[
+                { label: 'Total Projects', value: projects.length, icon: FolderKanban, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
+                { label: 'Deployed', value: projects.filter(p => p.status === 'deployed').length, icon: Globe, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30', border: 'border-teal-200/50 dark:border-teal-800/50' },
+                { label: 'In Progress', value: projects.filter(p => p.status === 'building').length, icon: Clock, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200/50 dark:border-amber-800/50' },
+                { label: 'Total Files', value: totalFiles, icon: FileCode, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
+              ].map((stat, i) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  whileHover={{ scale: 1.03, y: -2 }}
+                >
+                  <Card className={`hover:shadow-md transition-all border ${stat.border}`}>
+                    <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
+                      <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl ${stat.color} flex-shrink-0`}>
+                        <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-lg sm:text-2xl font-bold">
+                          <StatCounter value={stat.value} />
+                        </p>
+                        <p className="text-[9px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Quick Actions */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="mb-6 sm:mb-8"
+            >
+              <h2 className="text-sm font-semibold text-muted-foreground mb-3">Quick Actions</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {[
+                  { icon: Plus, label: 'New Project', desc: 'Start from scratch', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/50 dark:border-emerald-800/50', action: () => setShowCreate(true) },
+                  { icon: Upload, label: 'Import', desc: 'Import existing code', color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30 border-teal-200/50 dark:border-teal-800/50', action: () => toast.info('Import coming soon!') },
+                  { icon: Layers, label: 'Templates', desc: 'Browse templates', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30 border-violet-200/50 dark:border-violet-800/50', action: () => setShowCreate(true) },
+                  { icon: BookOpen, label: 'Learn', desc: 'Guides & docs', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/50', action: () => toast.info('Documentation coming soon!') },
+                ].map((item, i) => (
+                  <motion.button
+                    key={item.label}
+                    onClick={item.action}
+                    className={`flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all hover:shadow-md ${item.color}`}
+                    whileHover={{ scale: 1.02, y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.35 + i * 0.05 }}
+                  >
+                    <item.icon className="w-4 h-4 flex-shrink-0" />
+                    <div>
+                      <div className="text-xs font-semibold">{item.label}</div>
+                      <div className="text-[10px] text-muted-foreground">{item.desc}</div>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* How It Works - show when no projects */}
+            {projects.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="mb-6 sm:mb-8"
+              >
+                <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">How It Works</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative">
+                  {/* Connecting lines between steps (desktop only) */}
+                  <div className="hidden lg:block absolute top-1/2 left-[25%] right-[25%] h-px bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-300 dark:from-emerald-700 dark:via-teal-700 dark:to-sky-700 opacity-30" />
+                  {[
+                    { icon: Bot, step: '1', title: 'Describe', desc: 'Tell AI what you want to build', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
+                    { icon: Layers, step: '2', title: 'Plan', desc: 'AI creates an architecture plan', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
+                    { icon: Sparkles, step: '3', title: 'Generate', desc: 'Code is generated and reviewed', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200/50 dark:border-amber-800/50' },
+                    { icon: Rocket, step: '4', title: 'Deploy', desc: 'One-click deploy to production', color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/30', border: 'border-sky-200/50 dark:border-sky-800/50' },
+                  ].map((item, i) => (
+                    <Card key={item.step} className={`text-center hover:shadow-md transition-all border relative z-10 ${item.border}`}>
+                      <CardContent className="p-3 sm:p-4">
+                        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl ${item.color} flex items-center justify-center mx-auto mb-2 sm:mb-3`}>
+                          <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] text-muted-foreground font-medium mb-1">STEP {item.step}</div>
+                        <h3 className="font-semibold text-sm">{item.title}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{item.desc}</p>
+                        {/* Arrow between cards (desktop) */}
+                        {i < 3 && (
+                          <div className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20">
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Recent Activity Feed */}
+            {projects.length > 3 && recentActivity.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
+                className="mb-6 sm:mb-8"
+              >
+                <h2 className="text-sm font-semibold text-muted-foreground mb-3">Recent Activity</h2>
+                <div className="rounded-lg border bg-card">
+                  <div className="divide-y">
+                    {recentActivity.map((activity, i) => {
+                      const Icon = getActivityIcon(activity.action)
+                      return (
+                        <motion.div
+                          key={`${activity.id}-${activity.action}-${i}`}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors"
+                        >
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            activity.action === 'created'
+                              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
+                              : activity.action === 'deployed'
+                              ? 'bg-sky-50 text-sky-600 dark:bg-sky-950/30 dark:text-sky-400'
+                              : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400'
+                          }`}>
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs truncate">
+                              <span className="font-medium">{activity.name}</span>
+                              <span className="text-muted-foreground"> — {activity.action}</span>
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                            {getRelativeTime(activity.date)}
+                          </span>
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Projects Header with Search and View Toggle */}
+            {projects.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-2 sm:gap-4">
+                <h2 className="text-base sm:text-lg font-semibold flex-shrink-0">Your Projects</h2>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 sm:max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search projects..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="h-9 sm:h-8 pl-8 text-xs sm:text-sm min-h-[44px] sm:min-h-0"
+                    />
+                  </div>
+                  <div className="flex border rounded-md overflow-hidden flex-shrink-0">
+                    <Button
+                      variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                      size="icon"
+                      className="h-9 w-9 sm:h-7 sm:w-7 rounded-none min-h-[44px] sm:min-h-0"
+                      onClick={() => setViewMode('grid')}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                      size="icon"
+                      className="h-9 w-9 sm:h-7 sm:w-7 rounded-none min-h-[44px] sm:min-h-0"
+                      onClick={() => setViewMode('list')}
+                    >
+                      <List className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
-            {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                <AnimatePresence>
-                  {filteredProjects.map((project, i) => (
-                    <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
-                  ))}
-                </AnimatePresence>
-              </div>
+
+            {/* Projects Grid/List */}
+            {projects.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-center py-10 sm:py-12"
+              >
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 flex items-center justify-center mx-auto mb-3 sm:mb-4 animate-float">
+                  <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-500" />
+                </div>
+                <h3 className="text-base sm:text-lg font-semibold">No projects yet</h3>
+                <p className="text-sm text-muted-foreground mt-1 mb-4">
+                  Create your first project to start building with AI
+                </p>
+                <Button
+                  onClick={() => setShowCreate(true)}
+                  className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px]"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Project
+                </Button>
+              </motion.div>
             ) : (
-              <div className="space-y-2">
-                <AnimatePresence>
-                  {filteredProjects.map((project, i) => (
-                    <ProjectListItem key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
-                  ))}
-                </AnimatePresence>
-              </div>
+              <>
+                {filteredProjects.length === 0 && searchQuery && (
+                  <div className="text-center py-8">
+                    <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">No projects match &quot;{searchQuery}&quot;</p>
+                  </div>
+                )}
+                {viewMode === 'grid' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                    <AnimatePresence>
+                      {filteredProjects.map((project, i) => (
+                        <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <AnimatePresence>
+                      {filteredProjects.map((project, i) => (
+                        <ProjectListItem key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -368,6 +561,7 @@ export function Dashboard() {
 }
 
 import { Separator } from '@/components/ui/separator'
+import { toast } from 'sonner'
 
 function ProjectCard({ project, index, onSelect, onDelete }: {
   project: any
@@ -382,9 +576,10 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ delay: index * 0.05 }}
+      whileHover={{ scale: 1.02 }}
     >
       <Card
-        className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden"
+        className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]"
         onClick={() => onSelect(project.id)}
       >
         {/* Gradient accent on top */}
@@ -461,6 +656,7 @@ function ProjectListItem({ project, index, onSelect, onDelete }: {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -10 }}
       transition={{ delay: index * 0.03 }}
+      whileHover={{ x: 4 }}
     >
       <Card
         className="cursor-pointer hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group"

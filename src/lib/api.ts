@@ -238,6 +238,14 @@ class ApiClient {
     return data.data
   }
 
+  async deleteMemory(projectId: string, type: string, key: string) {
+    const data = await this.fetch<{ success: boolean; data: any }>(`/projects/${projectId}/memory`, {
+      method: 'DELETE',
+      body: JSON.stringify({ type, key }),
+    })
+    return data.data
+  }
+
   // Versions
   async getVersions(projectId: string) {
     const data = await this.fetch<{ success: boolean; data: any[] }>(`/projects/${projectId}/versions`)
