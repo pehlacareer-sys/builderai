@@ -203,32 +203,37 @@ export function ChatPanel() {
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scroll-smooth">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-3">
-              <Bot className="w-7 h-7 text-emerald-500" />
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center mb-4 ring-1 ring-emerald-500/10">
+              <Bot className="w-8 h-8 text-emerald-500" />
             </div>
-            <h3 className="text-base font-semibold">AI Website Builder</h3>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+            <h3 className="text-lg font-semibold">AI Website Builder</h3>
+            <p className="text-xs text-muted-foreground mt-1.5 max-w-xs leading-relaxed">
               Describe what you want to build. Our AI agents will plan, code, review, test, and prepare your app for deployment.
             </p>
-            <div className="mt-3 grid grid-cols-1 gap-1.5 w-full max-w-xs">
+            <div className="mt-4 w-full max-w-xs space-y-2">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Try these prompts</p>
               {[
-                'Build a blog with markdown support',
+                { text: 'Build a blog with markdown support', icon: '📝' },
                 'Create an e-commerce landing page',
                 'Make a task management dashboard',
                 'Build a portfolio website with dark mode',
-              ].map((suggestion) => (
+              ].map((suggestion, i) => (
                 <button
-                  key={suggestion}
-                  onClick={() => setInput(suggestion)}
-                  className="text-left px-2.5 py-1.5 text-[11px] rounded-lg border hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+                  key={i}
+                  onClick={() => setInput(typeof suggestion === 'string' ? suggestion : suggestion.text)}
+                  className="w-full text-left px-3 py-2 text-xs rounded-lg border border-border/50 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all hover:shadow-sm group"
                 >
-                  <Sparkles className="w-2.5 h-2.5 inline mr-1 text-emerald-500" />
-                  {suggestion}
+                  <Sparkles className="w-3 h-3 inline mr-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                  {typeof suggestion === 'string' ? suggestion : suggestion.text}
                 </button>
               ))}
+            </div>
+            <div className="mt-4 flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              5 AI agents ready
             </div>
           </div>
         )}
