@@ -1,9 +1,37 @@
 // API helper functions for the frontend
 
+import { toast } from 'sonner'
+
 const API_BASE = '/api'
 
 interface FetchOptions extends RequestInit {
   token?: string
+  silent?: boolean // If true, don't show toast on error
+}
+
+// Track recent error toasts to avoid duplicates
+const recentErrors = new Map<string, number>()
+const ERROR_DEBOUNCE_MS = 3000
+
+function showErrorToast(message: string) {
+  const now = Date.now()
+  const lastShown = recentErrors.get(message)
+  if (lastShown && now - lastShown < ERROR_DEBOUNCE_MS) {
+    return // Skip duplicate toast within debounce window
+  }
+  recentErrors.set(message, now)
+  toast.error('Request Failed', {
+    description: message,
+    duration: 5000,
+  })
+  // Clean up old entries
+  if (recentErrors.size > 20) {
+    for (const [key, time] of recentErrors) {
+      if (now - time > ERROR_DEBOUNCE_MS) {
+        recentErrors.delete(key)
+      }
+    }
+  }
 }
 
 class ApiClient {
@@ -26,7 +54,7 @@ class ApiClient {
   }
 
   private async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-    const { token: optToken, ...fetchOptions } = options
+    const { token: optToken, silent, ...fetchOptions } = options
     const token = optToken || this.getToken()
 
     const headers: Record<string, string> = {
@@ -38,18 +66,46 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...fetchOptions,
-      headers,
-    })
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...fetchOptions,
+        headers,
+      })
 
-    const data = await response.json()
+      // Handle non-JSON responses gracefully
+      let data: any
+      try {
+        data = await response.json()
+      } catch {
+        if (!response.ok) {
+          const message = `Server error (${response.status})`
+          if (!silent) showErrorToast(message)
+          throw new Error(message)
+        }
+        return {} as T
+      }
 
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`)
+      if (!response.ok) {
+        const message = data.error || `Request failed (${response.status})`
+        if (!silent) showErrorToast(message)
+        throw new Error(message)
+      }
+
+      return data
+    } catch (error) {
+      // Re-throw if already processed (our own errors)
+      if (error instanceof Error && error.message.startsWith('Request failed') || 
+          error instanceof Error && error.message.startsWith('Server error')) {
+        throw error
+      }
+      // Network errors, CORS, etc.
+      if (error instanceof TypeError) {
+        const message = 'Network error — please check your connection'
+        if (!silent) showErrorToast(message)
+        throw new Error(message)
+      }
+      throw error
     }
-
-    return data
   }
 
   // Auth
@@ -202,6 +258,54 @@ class ApiClient {
       method: 'POST',
     })
     return data.data
+  }
+
+  // Export project as ZIP
+  async exportProject(projectId: string): Promise<void> {
+    const token = this.getToken()
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await fetch(`${API_BASE}/projects/${projectId}/export`, {
+      method: 'GET',
+      headers,
+    })
+
+    if (!response.ok) {
+      let message = `Export failed (${response.status})`
+      try {
+        const data = await response.json()
+        message = data.error || message
+      } catch {
+        // Ignore JSON parse error
+      }
+      showErrorToast(message)
+      throw new Error(message)
+    }
+
+    const blob = await response.blob()
+
+    // Extract filename from Content-Disposition header, or use default
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = 'project.zip'
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/)
+      if (match) {
+        filename = match[1]
+      }
+    }
+
+    // Trigger browser download
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 }
 

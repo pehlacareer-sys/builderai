@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useProjectStore } from '@/stores/project-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { api } from '@/lib/api'
@@ -14,16 +14,23 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { motion } from 'framer-motion'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Zap, Code2, Eye, Play,
   CheckCircle2, XCircle, AlertCircle, Loader2, LogOut,
   PanelLeftClose, PanelLeft, FileCode, Shield, Wifi,
   History, Plus, ChevronRight, Download, FolderTree,
-  FileText, FileJson, FileType, FolderOpen
+  FileText, FileJson, FileType, FolderOpen, Settings2,
+  Rocket, Menu, X
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { ProjectSettingsDialog } from '@/components/project-settings-dialog'
+import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { MobileNav, type MobileTab } from '@/components/mobile-nav'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -50,17 +57,82 @@ interface VersionData {
 export function Workspace() {
   const { currentProject, files, currentFile, selectFile, clearCurrentProject, refreshFiles } = useProjectStore()
   const { user, logout } = useAuthStore()
+  const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [rightPanel, setRightPanel] = useState('code')
   const [validating, setValidating] = useState(false)
   const [validationResults, setValidationResults] = useState<Array<{ status: string; message: string }>>([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [lastSavedTime, setLastSavedTime] = useState<string>('')
 
   // Version history state
   const [versions, setVersions] = useState<VersionData[]>([])
   const [loadingVersions, setLoadingVersions] = useState(false)
   const [creatingVersion, setCreatingVersion] = useState(false)
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // Mobile state
+  const [mobileTab, setMobileTab] = useState<MobileTab>('chat')
+  const [fileSheetOpen, setFileSheetOpen] = useState(false)
+  const [menuSheetOpen, setMenuSheetOpen] = useState(false)
+
+  // Auto-collapse sidebar on tablet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleResize = () => {
+        if (window.innerWidth >= 768 && window.innerWidth < 1024) {
+          setSidebarOpen(false)
+        }
+      }
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 's',
+        ctrlKey: true,
+        metaKey: true,
+        description: 'Save current file',
+        category: 'editor',
+        action: () => {
+          if (currentFile && hasUnsavedChanges) {
+            handleSaveFile(currentFile.id, currentFile.content)
+            toast.success('File saved')
+          }
+        },
+      },
+      {
+        key: 'b',
+        ctrlKey: true,
+        metaKey: true,
+        description: 'Toggle sidebar',
+        category: 'navigation',
+        action: () => {
+          if (isMobile) {
+            setFileSheetOpen(prev => !prev)
+          } else {
+            setSidebarOpen(prev => !prev)
+          }
+        },
+      },
+      {
+        key: 'escape',
+        description: 'Close dialogs / cancel edit',
+        category: 'general',
+        action: () => {
+          if (settingsOpen) setSettingsOpen(false)
+          if (fileSheetOpen) setFileSheetOpen(false)
+          if (menuSheetOpen) setMenuSheetOpen(false)
+        },
+      },
+    ],
+  })
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -106,8 +178,8 @@ export function Workspace() {
     if (!currentProject) return
     await api.updateFile(currentProject.id, fileId, { content })
     setHasUnsavedChanges(false)
+    setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     await refreshFiles()
-    // Update currentFile in store to reflect saved content
     const store = useProjectStore.getState()
     if (store.currentFile?.id === fileId) {
       store.selectFile(fileId)
@@ -140,8 +212,274 @@ export function Workspace() {
     })
   }
 
+  // Handle file selection - close file sheet on mobile after selecting
+  const handleSelectFile = useCallback((fileOrId: any) => {
+    selectFile(fileOrId)
+    if (isMobile) {
+      setFileSheetOpen(false)
+      setMobileTab('code')
+    }
+  }, [selectFile, isMobile])
+
+  // Determine current file language for status bar
+  const currentFileLanguage = currentFile?.language || (currentFile ? getLanguageFromPath(currentFile.path) : '')
+  const currentLineCount = currentFile?.content ? currentFile.content.split('\n').length : 0
+
   if (!currentProject) return null
 
+  // ─── Mobile Layout ─────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        {/* Mobile Top Bar */}
+        <header className="border-b bg-background/80 backdrop-blur-sm h-11 flex items-center px-3 gap-2 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
+            onClick={() => setMenuSheetOpen(true)}
+            title="Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
+              <Zap className="w-2.5 h-2.5 text-white" />
+            </div>
+            <span className="text-xs font-semibold truncate">{currentProject.name}</span>
+            <Badge variant="secondary" className={`text-[9px] px-1 ${STATUS_COLORS[currentProject.status]}`}>
+              {currentProject.status}
+            </Badge>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
+            onClick={() => setSettingsOpen(true)}
+            title="Project settings"
+          >
+            <Settings2 className="w-4 h-4 text-muted-foreground" />
+          </Button>
+        </header>
+
+        {/* Project Settings Dialog */}
+        {currentProject && (
+          <ProjectSettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            project={currentProject}
+          />
+        )}
+
+        {/* Menu Sheet (slides from left) */}
+        <Sheet open={menuSheetOpen} onOpenChange={setMenuSheetOpen}>
+          <SheetContent side="left" className="w-[280px] p-0">
+            <SheetHeader className="px-4 pt-4 pb-2 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-sm font-bold">BuilderAI</span>
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col p-4 gap-1">
+              <Button
+                variant="ghost"
+                className="justify-start h-11 min-h-[44px] text-sm"
+                onClick={() => {
+                  setMenuSheetOpen(false)
+                  clearCurrentProject()
+                }}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </Button>
+              <Button
+                variant="ghost"
+                className="justify-start h-11 min-h-[44px] text-sm"
+                onClick={() => {
+                  setMenuSheetOpen(false)
+                  handleValidate()
+                }}
+                disabled={validating}
+              >
+                {validating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shield className="w-4 h-4 mr-2" />}
+                Validate Project
+              </Button>
+              <Button
+                variant="ghost"
+                className="justify-start h-11 min-h-[44px] text-sm"
+                onClick={() => {
+                  setMenuSheetOpen(false)
+                  toast.info('Deployment coming soon!')
+                }}
+              >
+                <Rocket className="w-4 h-4 mr-2" />
+                Deploy Project
+              </Button>
+              <Separator className="my-2" />
+              <div className="flex items-center gap-3 px-3 py-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
+                    {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                </div>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex items-center justify-between px-3 py-1">
+                <span className="text-xs text-muted-foreground">Theme</span>
+                <ThemeToggle />
+              </div>
+              <Button
+                variant="ghost"
+                className="justify-start h-11 min-h-[44px] text-sm text-destructive hover:text-destructive"
+                onClick={() => {
+                  setMenuSheetOpen(false)
+                  logout()
+                }}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Files Sheet (full-screen modal on mobile) */}
+        <Sheet open={fileSheetOpen} onOpenChange={setFileSheetOpen}>
+          <SheetContent side="left" className="w-full sm:max-w-sm p-0">
+            <SheetHeader className="px-4 pt-4 pb-2 border-b">
+              <SheetTitle className="flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">Files</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5">
+                  {files.length}
+                </Badge>
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-hidden">
+              <FileTree
+                files={files}
+                selectedFileId={currentFile?.id || null}
+                onSelectFile={handleSelectFile}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Mobile Content Area */}
+        <div className="flex-1 overflow-hidden pb-14">
+          {mobileTab === 'chat' && (
+            <ChatPanel />
+          )}
+          {mobileTab === 'files' && (
+            <div className="h-full flex flex-col">
+              <div className="border-b px-4 py-2 flex items-center justify-between bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <FolderTree className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs font-medium">Files</span>
+                  <Badge variant="secondary" className="text-[10px] px-1.5">
+                    {files.length}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <FileTree
+                  files={files}
+                  selectedFileId={currentFile?.id || null}
+                  onSelectFile={handleSelectFile}
+                />
+              </div>
+            </div>
+          )}
+          {mobileTab === 'code' && (
+            <div className="h-full flex flex-col">
+              <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
+                <div className="border-b px-2 flex items-center">
+                  <TabsList className="h-9 bg-transparent">
+                    <TabsTrigger value="code" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <Code2 className="w-3 h-3 mr-1" />
+                      Code
+                    </TabsTrigger>
+                    <TabsTrigger value="validate" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <Shield className="w-3 h-3 mr-1" />
+                      Validate
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <History className="w-3 h-3 mr-1" />
+                      History
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
+                  <CodeViewer
+                    file={currentFile}
+                    onSave={handleSaveFile}
+                    hasUnsavedChanges={hasUnsavedChanges}
+                  />
+                </TabsContent>
+                <TabsContent value="validate" className="flex-1 m-0 overflow-hidden">
+                  <ValidationPanel
+                    results={validationResults}
+                    onValidate={handleValidate}
+                    validating={validating}
+                  />
+                </TabsContent>
+                <TabsContent value="history" className="flex-1 m-0 overflow-hidden">
+                  <VersionHistoryPanel
+                    versions={versions}
+                    loading={loadingVersions}
+                    creating={creatingVersion}
+                    onCreateVersion={handleCreateVersion}
+                    onRefresh={loadVersions}
+                    expandedVersions={expandedVersions}
+                    onToggleExpand={toggleVersionExpand}
+                  />
+                </TabsContent>
+              </Tabs>
+              {/* Mobile Status Bar */}
+              <footer className="border-t h-6 px-3 flex items-center justify-between text-[10px] text-muted-foreground bg-muted/30 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  {currentFile && (
+                    <>
+                      <span className="flex items-center gap-1">
+                        <Code2 className="w-2.5 h-2.5" />
+                        {currentFileLanguage.toUpperCase()}
+                      </span>
+                      <span>Ln {currentLineCount}</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {lastSavedTime && (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" />
+                      Saved {lastSavedTime}
+                    </span>
+                  )}
+                </div>
+              </footer>
+            </div>
+          )}
+          {mobileTab === 'preview' && (
+            <PreviewPanel files={files} projectName={currentProject.name} projectId={currentProject.id} />
+          )}
+        </div>
+
+        {/* Bottom Navigation */}
+        <MobileNav activeTab={mobileTab} onTabChange={setMobileTab} />
+
+        {/* Keyboard Shortcut Help Dialog */}
+        <KeyboardShortcutHelp />
+      </div>
+    )
+  }
+
+  // ─── Desktop/Tablet Layout ─────────────────────────────────────────────
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Top Bar */}
@@ -158,15 +496,37 @@ export function Workspace() {
           <Badge variant="secondary" className={`text-[10px] px-1.5 ${STATUS_COLORS[currentProject.status]}`}>
             {currentProject.status}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 ml-1"
+            onClick={() => setSettingsOpen(true)}
+            title="Project settings"
+          >
+            <Settings2 className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+          </Button>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          {/* Online indicator with pulse */}
           <div className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
-            <Wifi className="w-3 h-3" />
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
             <span className="hidden sm:inline">Online</span>
           </div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleValidate} disabled={validating}>
             {validating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
             Validate
+          </Button>
+          {/* Deploy Button */}
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-sm shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            onClick={() => toast.info('Deployment coming soon!')}
+          >
+            <Rocket className="w-3 h-3 mr-1" />
+            <span className="hidden sm:inline">Deploy</span>
           </Button>
           <Separator orientation="vertical" className="h-5" />
           <Avatar className="h-6 w-6">
@@ -181,11 +541,20 @@ export function Workspace() {
         </div>
       </header>
 
+      {/* Project Settings Dialog */}
+      {currentProject && (
+        <ProjectSettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          project={currentProject}
+        />
+      )}
+
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* File Tree Sidebar */}
+        {/* File Tree Sidebar - hidden on tablet when collapsed */}
         <div
-          className="border-r flex-shrink-0 overflow-hidden transition-all duration-200"
+          className="border-r flex-shrink-0 overflow-hidden transition-all duration-200 hidden md:block"
           style={{ width: sidebarOpen ? 220 : 0 }}
         >
           <div className="h-full w-[220px] flex flex-col">
@@ -206,7 +575,7 @@ export function Workspace() {
         {/* Toggle Sidebar */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="w-5 flex-shrink-0 border-r flex items-center justify-center hover:bg-muted/50 transition-colors"
+          className="w-5 flex-shrink-0 border-r hidden md:flex items-center justify-center hover:bg-muted/50 transition-colors"
           title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
         >
           {sidebarOpen ? (
@@ -216,65 +585,120 @@ export function Workspace() {
           )}
         </button>
 
-        {/* Chat Panel */}
-        <div className="flex-1 min-w-0 border-r">
+        {/* Chat Panel - responsive width */}
+        <div className="flex-1 min-w-0 border-r md:w-1/2 lg:flex-1">
           <ChatPanel />
         </div>
 
-        {/* Right Panel - Code / Preview / Validate / History */}
-        <div className="w-[45%] flex-shrink-0 flex flex-col">
+        {/* Right Panel - responsive width */}
+        <div className="hidden md:flex md:w-1/2 lg:w-[45%] flex-shrink-0 flex-col">
           <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
             <div className="border-b px-2 flex items-center">
               <TabsList className="h-9 bg-transparent">
-                <TabsTrigger value="code" className="text-xs h-7 data-[state=active]:bg-muted">
+                <TabsTrigger
+                  value="code"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
                   <Code2 className="w-3 h-3 mr-1" />
                   Code
                 </TabsTrigger>
-                <TabsTrigger value="preview" className="text-xs h-7 data-[state=active]:bg-muted">
+                <TabsTrigger
+                  value="preview"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
                   <Eye className="w-3 h-3 mr-1" />
                   Preview
                 </TabsTrigger>
-                <TabsTrigger value="validate" className="text-xs h-7 data-[state=active]:bg-muted">
+                <TabsTrigger
+                  value="validate"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
                   <Shield className="w-3 h-3 mr-1" />
                   Validate
                 </TabsTrigger>
-                <TabsTrigger value="history" className="text-xs h-7 data-[state=active]:bg-muted">
+                <TabsTrigger
+                  value="history"
+                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                >
                   <History className="w-3 h-3 mr-1" />
                   History
                 </TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
-              <CodeViewer
-                file={currentFile}
-                onSave={handleSaveFile}
-                hasUnsavedChanges={hasUnsavedChanges}
-              />
-            </TabsContent>
-            <TabsContent value="preview" className="flex-1 m-0 overflow-hidden">
-              <PreviewPanel files={files} projectName={currentProject.name} />
-            </TabsContent>
-            <TabsContent value="validate" className="flex-1 m-0 overflow-hidden">
-              <ValidationPanel
-                results={validationResults}
-                onValidate={handleValidate}
-                validating={validating}
-              />
-            </TabsContent>
-            <TabsContent value="history" className="flex-1 m-0 overflow-hidden">
-              <VersionHistoryPanel
-                versions={versions}
-                loading={loadingVersions}
-                creating={creatingVersion}
-                onCreateVersion={handleCreateVersion}
-                onRefresh={loadVersions}
-                expandedVersions={expandedVersions}
-                onToggleExpand={toggleVersionExpand}
-              />
-            </TabsContent>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={rightPanel}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.15 }}
+                className="flex-1 overflow-hidden flex flex-col"
+              >
+                {rightPanel === 'code' && (
+                  <CodeViewer
+                    file={currentFile}
+                    onSave={handleSaveFile}
+                    hasUnsavedChanges={hasUnsavedChanges}
+                  />
+                )}
+                {rightPanel === 'preview' && (
+                  <PreviewPanel files={files} projectName={currentProject.name} projectId={currentProject.id} />
+                )}
+                {rightPanel === 'validate' && (
+                  <ValidationPanel
+                    results={validationResults}
+                    onValidate={handleValidate}
+                    validating={validating}
+                  />
+                )}
+                {rightPanel === 'history' && (
+                  <VersionHistoryPanel
+                    versions={versions}
+                    loading={loadingVersions}
+                    creating={creatingVersion}
+                    onCreateVersion={handleCreateVersion}
+                    onRefresh={loadVersions}
+                    expandedVersions={expandedVersions}
+                    onToggleExpand={toggleVersionExpand}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
           </Tabs>
         </div>
       </div>
+
+      {/* Desktop Status Bar */}
+      <footer className="border-t h-6 px-3 flex items-center justify-between text-[10px] text-muted-foreground bg-muted/30 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          {currentFile && (
+            <>
+              <span className="flex items-center gap-1">
+                <Code2 className="w-2.5 h-2.5" />
+                {currentFileLanguage.toUpperCase()}
+              </span>
+              <span className="flex items-center gap-1">
+                <span>Ln {currentLineCount}</span>
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {lastSavedTime && (
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500" />
+              Saved {lastSavedTime}
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Wifi className="w-2.5 h-2.5 text-emerald-500" />
+            Connected
+          </span>
+        </div>
+      </footer>
+
+      {/* Keyboard Shortcut Help Dialog */}
+      <KeyboardShortcutHelp />
     </div>
   )
 }
@@ -283,6 +707,25 @@ export function Workspace() {
 
 function getFileExtension(path: string): string {
   return path.split('.').pop()?.toLowerCase() || ''
+}
+
+function getLanguageFromPath(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() || ''
+  const map: Record<string, string> = {
+    typescript: 'typescript',
+    javascript: 'javascript',
+    jsx: 'jsx',
+    tsx: 'tsx',
+    css: 'css',
+    json: 'json',
+    html: 'html',
+    markdown: 'markdown',
+    yaml: 'yaml',
+    prisma: 'typescript',
+    sql: 'sql',
+    plaintext: 'text',
+  }
+  return map[ext] || 'text'
 }
 
 function buildFileTree(files: Array<{ path: string }>): TreeNode {
@@ -301,7 +744,6 @@ function buildFileTree(files: Array<{ path: string }>): TreeNode {
       current = child
     }
   }
-  // Sort: folders first, then files, alphabetically
   const sortTree = (node: TreeNode) => {
     node.children.sort((a, b) => {
       if (a.isFile !== b.isFile) return a.isFile ? 1 : -1
@@ -355,8 +797,8 @@ function TreeNodeView({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
   )
 }
 
-function PreviewPanel({ files, projectName }: { files: Array<{ path: string; content: string }>; projectName: string }) {
-  // File type counts
+function PreviewPanel({ files, projectName, projectId }: { files: Array<{ path: string; content: string }>; projectName: string; projectId?: string }) {
+  const [exporting, setExporting] = useState(false)
   const typeCounts: Record<string, number> = {}
   let totalSize = 0
   for (const file of files) {
@@ -365,7 +807,6 @@ function PreviewPanel({ files, projectName }: { files: Array<{ path: string; con
     totalSize += new Blob([file.content]).size
   }
 
-  // Project health
   const hasPackageJson = files.some(f => f.path.includes('package.json'))
   const hasTsConfig = files.some(f => f.path.includes('tsconfig'))
   const hasAppDir = files.some(f => f.path.includes('app/'))
@@ -398,9 +839,21 @@ function PreviewPanel({ files, projectName }: { files: Array<{ path: string; con
     toast.success('Project files downloaded')
   }
 
+  const handleExportZip = async () => {
+    if (!projectId) return
+    setExporting(true)
+    try {
+      await api.exportProject(projectId)
+      toast.success('Project exported as ZIP')
+    } catch {
+      toast.error('Failed to export project')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const fileTree = buildFileTree(files)
 
-  // Icon map for file types
   const typeIconMap: Record<string, React.ReactNode> = {
     TSX: <FileType className="w-3 h-3 text-sky-500" />,
     TS: <FileType className="w-3 h-3 text-sky-500" />,
@@ -413,21 +866,35 @@ function PreviewPanel({ files, projectName }: { files: Array<{ path: string; con
 
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b px-4 py-2 flex items-center justify-between bg-muted/30">
+      <div className="border-b px-3 sm:px-4 py-2 flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">Project Overview</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-[10px]"
-          onClick={handleDownload}
-          disabled={files.length === 0}
-        >
-          <Download className="w-3 h-3 mr-1" />
-          Download
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] min-h-[44px] md:min-h-0"
+            onClick={handleDownload}
+            disabled={files.length === 0}
+          >
+            <Download className="w-3 h-3 mr-1" />
+            Markdown
+          </Button>
+          {projectId && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[10px] min-h-[44px] md:min-h-0 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              onClick={handleExportZip}
+              disabled={files.length === 0 || exporting}
+            >
+              {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <FolderTree className="w-3 h-3 mr-1" />}
+              Export ZIP
+            </Button>
+          )}
+        </div>
       </div>
 
       {files.length === 0 ? (
@@ -440,14 +907,14 @@ function PreviewPanel({ files, projectName }: { files: Array<{ path: string; con
         </div>
       ) : (
         <ScrollArea className="flex-1">
-          <div className="p-4 space-y-4">
+          <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
             {/* Project Health */}
             <div className="rounded-lg border p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-muted-foreground">Project Health</span>
                 <span className={`text-xs font-semibold ${healthColor}`}>{healthLabel}</span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <HealthCheck label="package.json" ok={hasPackageJson} />
                 <HealthCheck label="tsconfig" ok={hasTsConfig} />
                 <HealthCheck label="app/ dir" ok={hasAppDir} />
@@ -542,7 +1009,7 @@ function VersionHistoryPanel({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b px-4 py-2 flex items-center justify-between bg-muted/30">
+      <div className="border-b px-3 sm:px-4 py-2 flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">Version History</span>
@@ -554,7 +1021,7 @@ function VersionHistoryPanel({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-[10px] px-2"
+            className="h-6 text-[10px] px-2 min-h-[44px] md:min-h-0"
             onClick={onRefresh}
             disabled={loading}
           >
@@ -563,7 +1030,7 @@ function VersionHistoryPanel({
           <Button
             variant="default"
             size="sm"
-            className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700"
+            className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 min-h-[44px] md:min-h-0"
             onClick={onCreateVersion}
             disabled={creating}
           >
@@ -578,7 +1045,7 @@ function VersionHistoryPanel({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           {loading && versions.length === 0 ? (
             <div className="text-center py-8">
               <Loader2 className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3 animate-spin" />
@@ -610,7 +1077,7 @@ function VersionHistoryPanel({
                       className="rounded-lg border"
                     >
                       <CollapsibleTrigger asChild>
-                        <button className="w-full text-left p-3 hover:bg-muted/30 transition-colors rounded-lg">
+                        <button className="w-full text-left p-3 hover:bg-muted/30 transition-colors rounded-lg min-h-[44px]">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -675,18 +1142,18 @@ function ValidationPanel({
 }) {
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b px-4 py-2 flex items-center justify-between bg-muted/30">
+      <div className="border-b px-3 sm:px-4 py-2 flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">Validation</span>
         </div>
-        <Button variant="outline" size="sm" className="h-6 text-[10px]" onClick={onValidate} disabled={validating}>
+        <Button variant="outline" size="sm" className="h-6 text-[10px] min-h-[44px] md:min-h-0" onClick={onValidate} disabled={validating}>
           {validating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
           Run Checks
         </Button>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           {results.length === 0 ? (
             <div className="text-center py-8">
               <Shield className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />

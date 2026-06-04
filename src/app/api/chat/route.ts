@@ -77,13 +77,25 @@ function parseFilesFromResponse(response: string): Array<{ path: string; content
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, projectId, conversationHistory = [] } = await request.json()
+    const { message, projectId, model, conversationHistory = [] } = await request.json()
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
     const sdk = await getZAI()
+
+    // Build chat completion options, passing model if provided
+    const chatOptions = (messages: Array<{ role: string; content: string }>) => {
+      const opts: any = {
+        messages,
+        thinking: { type: 'disabled' },
+      }
+      if (model) {
+        opts.model = model
+      }
+      return opts
+    }
 
     // Create a TransformStream for SSE-like streaming
     const encoder = new TextEncoder()
@@ -111,10 +123,7 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: message },
         ]
 
-        const plannerCompletion = await sdk.chat.completions.create({
-          messages: plannerMessages,
-          thinking: { type: 'disabled' },
-        })
+        const plannerCompletion = await sdk.chat.completions.create(chatOptions(plannerMessages))
         plannerResponse = plannerCompletion.choices[0]?.message?.content || ''
         await sendMessage('planner', 'complete', plannerResponse)
 
@@ -126,10 +135,7 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: engineerPrompt },
         ]
 
-        const engineerCompletion = await sdk.chat.completions.create({
-          messages: engineerMessages,
-          thinking: { type: 'disabled' },
-        })
+        const engineerCompletion = await sdk.chat.completions.create(chatOptions(engineerMessages))
         engineerResponse = engineerCompletion.choices[0]?.message?.content || ''
         const generatedFiles = parseFilesFromResponse(engineerResponse)
         await sendMessage('engineer', 'complete', engineerResponse, false)
@@ -147,10 +153,7 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: reviewerPrompt },
         ]
 
-        const reviewerCompletion = await sdk.chat.completions.create({
-          messages: reviewerMessages,
-          thinking: { type: 'disabled' },
-        })
+        const reviewerCompletion = await sdk.chat.completions.create(chatOptions(reviewerMessages))
         reviewerResponse = reviewerCompletion.choices[0]?.message?.content || ''
         await sendMessage('reviewer', 'complete', reviewerResponse)
 
@@ -162,10 +165,7 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: qaPrompt },
         ]
 
-        const qaCompletion = await sdk.chat.completions.create({
-          messages: qaMessages,
-          thinking: { type: 'disabled' },
-        })
+        const qaCompletion = await sdk.chat.completions.create(chatOptions(qaMessages))
         qaResponse = qaCompletion.choices[0]?.message?.content || ''
         await sendMessage('qa', 'complete', qaResponse)
 
@@ -177,10 +177,7 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: deployerPrompt },
         ]
 
-        const deployerCompletion = await sdk.chat.completions.create({
-          messages: deployerMessages,
-          thinking: { type: 'disabled' },
-        })
+        const deployerCompletion = await sdk.chat.completions.create(chatOptions(deployerMessages))
         deployerResponse = deployerCompletion.choices[0]?.message?.content || ''
         await sendMessage('deployer', 'complete', deployerResponse)
 

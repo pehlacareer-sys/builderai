@@ -1,12 +1,38 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, lazy } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
-import { AuthScreen } from '@/components/auth-screen'
-import { Dashboard } from '@/components/dashboard'
-import { Workspace } from '@/components/workspace'
-import { Loader2 } from 'lucide-react'
+import { ErrorBoundary } from '@/components/error-boundary'
+import {
+  DashboardSkeleton,
+  WorkspaceSkeleton,
+  AppLoadingSkeleton,
+} from '@/components/loading-skeletons'
+import { Loader2, Zap } from 'lucide-react'
+
+// Lazy load heavy components for better perceived performance
+const AuthScreen = lazy(() =>
+  import('@/components/auth-screen').then((mod) => ({ default: mod.AuthScreen }))
+)
+const Dashboard = lazy(() =>
+  import('@/components/dashboard').then((mod) => ({ default: mod.Dashboard }))
+)
+const Workspace = lazy(() =>
+  import('@/components/workspace').then((mod) => ({ default: mod.Workspace }))
+)
+
+function AuthFallback() {
+  return <AppLoadingSkeleton />
+}
+
+function DashboardFallback() {
+  return <DashboardSkeleton />
+}
+
+function WorkspaceFallback() {
+  return <WorkspaceSkeleton />
+}
 
 export default function Home() {
   const { isAuthenticated, initialize } = useAuthStore()
@@ -15,15 +41,22 @@ export default function Home() {
 
   useEffect(() => {
     const init = async () => {
-      await initialize()
-      setInitializing(false)
+      try {
+        await initialize()
+      } catch (error) {
+        console.error('Failed to initialize auth:', error)
+      } finally {
+        setInitializing(false)
+      }
     }
     init()
   }, [initialize])
 
   useEffect(() => {
     if (isAuthenticated) {
-      loadProjects()
+      loadProjects().catch((error) => {
+        console.error('Failed to load projects:', error)
+      })
     }
   }, [isAuthenticated, loadProjects])
 
@@ -40,13 +73,21 @@ export default function Home() {
     )
   }
 
-  if (!isAuthenticated) {
-    return <AuthScreen />
-  }
-
-  if (currentProject) {
-    return <Workspace />
-  }
-
-  return <Dashboard />
+  return (
+    <ErrorBoundary>
+      {!isAuthenticated ? (
+        <Suspense fallback={<AuthFallback />}>
+          <AuthScreen />
+        </Suspense>
+      ) : currentProject ? (
+        <Suspense fallback={<WorkspaceFallback />}>
+          <Workspace />
+        </Suspense>
+      ) : (
+        <Suspense fallback={<DashboardFallback />}>
+          <Dashboard />
+        </Suspense>
+      )}
+    </ErrorBoundary>
+  )
 }

@@ -24,6 +24,18 @@ export interface Conversation {
   updatedAt: string
 }
 
+const DEFAULT_MODEL = 'gpt-4o'
+
+function getInitialModel(): string {
+  if (typeof window === 'undefined') return DEFAULT_MODEL
+  try {
+    const stored = localStorage.getItem('builderai-selected-model')
+    return stored || DEFAULT_MODEL
+  } catch {
+    return DEFAULT_MODEL
+  }
+}
+
 interface ChatState {
   conversations: Conversation[]
   currentConversation: Conversation | null
@@ -33,6 +45,7 @@ interface ChatState {
   generatedFiles: Array<{ path: string; content: string; language: string }>
   isProcessing: boolean
   error: string | null
+  selectedModel: string
 
   loadConversations: (projectId: string) => Promise<void>
   createConversation: (projectId: string, title?: string) => Promise<Conversation>
@@ -42,6 +55,7 @@ interface ChatState {
   stopProcessing: () => void
   clearCurrentConversation: () => void
   clearError: () => void
+  setModel: (model: string) => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -53,6 +67,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   generatedFiles: [],
   isProcessing: false,
   error: null,
+  selectedModel: DEFAULT_MODEL,
   abortController: null as AbortController | null,
 
   loadConversations: async (projectId) => {
@@ -139,6 +154,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         body: JSON.stringify({
           message: content,
           projectId,
+          model: get().selectedModel,
           conversationHistory: get().messages.filter(m => m.role !== 'system').slice(-10),
         }),
         signal: abortController.signal,
@@ -171,18 +187,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 set({ generatedFiles: data.files })
               } else if (data.type === 'complete') {
                 // Pipeline complete
-                set((state) => ({
-                  isProcessing: false,
-                  currentAgent: null,
-                }))
+                set({ isProcessing: false, currentAgent: null })
 
-                // Persist all agent messages
-                const agentMessages = state.messages.filter(m =>
+                // Use get() to access current messages (state is not in scope outside set callback)
+                const currentMessages = get().messages
+
+                // Persist all agent messages that haven't been persisted yet
+                const agentMessages = currentMessages.filter(m =>
                   ['planner', 'engineer', 'reviewer', 'qa', 'deployer'].includes(m.role)
                 )
                 for (const msg of agentMessages) {
                   api.addMessage(projectId, conversationId, msg.role, msg.content).catch(console.error)
                 }
+
+                // Add a final assistant summary message
+                const summary = data.summary || 'Pipeline completed successfully'
+                set((state) => ({
+                  messages: [
+                    ...state.messages,
+                    {
+                      role: 'assistant' as const,
+                      content: summary,
+                      createdAt: new Date().toISOString(),
+                    },
+                  ],
+                }))
+
+                // Persist the assistant summary message
+                api.addMessage(projectId, conversationId, 'assistant', summary).catch(console.error)
               } else if (data.type === 'error') {
                 set({
                   error: data.error,
@@ -257,4 +289,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  setModel: (model: string) => set({ selectedModel: model }),
 }))

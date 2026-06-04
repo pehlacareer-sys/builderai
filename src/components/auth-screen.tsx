@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Zap, ArrowRight, Loader2, Bot, Layers, Sparkles, Rocket,
-  Code2, Shield, Globe, Keyboard, Check
+  Code2, Shield, Globe, Keyboard, Check, Quote, Github
 } from 'lucide-react'
 
 const FEATURES = [
@@ -42,10 +42,108 @@ const FEATURES = [
 ]
 
 const TRUST_METRICS = [
-  { value: '10K+', label: 'Projects Built' },
-  { value: '50K+', label: 'Files Generated' },
-  { value: '99.9%', label: 'Uptime' },
+  { value: 10000, suffix: '+', label: 'Projects Built' },
+  { value: 50000, suffix: '+', label: 'Files Generated' },
+  { value: 99.9, suffix: '%', label: 'Uptime' },
 ]
+
+const TESTIMONIALS = [
+  {
+    quote: "BuilderAI reduced our development time by 70%. The AI agents handle the heavy lifting while we focus on design.",
+    author: "Sarah Chen",
+    role: "CTO, TechVenture",
+  },
+  {
+    quote: "From idea to deployed app in under 10 minutes. It's like having a full engineering team on demand.",
+    author: "Marcus Johnson",
+    role: "Founder, StartupKit",
+  },
+  {
+    quote: "The code quality from AI is impressive. Clean, well-structured, and follows best practices out of the box.",
+    author: "Priya Patel",
+    role: "Lead Developer, CodeCraft",
+  },
+]
+
+// Animated counter component
+function AnimatedCounter({ value, suffix, duration = 2000 }: { value: number; suffix: string; duration?: number }) {
+  const [count, setCount] = useState(0)
+  const [hasStarted, setHasStarted] = useState(false)
+
+  useEffect(() => {
+    // Start after a short delay for visual effect
+    const startTimer = setTimeout(() => setHasStarted(true), 500)
+    return () => clearTimeout(startTimer)
+  }, [])
+
+  useEffect(() => {
+    if (!hasStarted) return
+
+    let start = 0
+    const increment = value / (duration / 16)
+    const isDecimal = value % 1 !== 0
+
+    const timer = setInterval(() => {
+      start += increment
+      if (start >= value) {
+        setCount(value)
+        clearInterval(timer)
+      } else {
+        setCount(isDecimal ? parseFloat(start.toFixed(1)) : Math.floor(start))
+      }
+    }, 16)
+
+    return () => clearInterval(timer)
+  }, [hasStarted, value, duration])
+
+  const formattedValue = value >= 1000
+    ? `${(count / 1000).toFixed(count >= value ? 0 : 0)}K`
+    : count.toString()
+
+  return (
+    <span>
+      {value === 10000 ? `${(count / 1000).toFixed(count >= 1000 ? 0 : 1)}K` : value === 50000 ? `${(count / 1000).toFixed(count >= 1000 ? 0 : 1)}K` : count}{suffix}
+    </span>
+  )
+}
+
+// Password strength indicator
+function PasswordStrength({ password }: { password: string }) {
+  if (!password) return null
+
+  const getStrength = (pw: string) => {
+    let score = 0
+    if (pw.length >= 4) score++
+    if (pw.length >= 8) score++
+    if (/[A-Z]/.test(pw)) score++
+    if (/[0-9]/.test(pw)) score++
+    if (/[^A-Za-z0-9]/.test(pw)) score++
+    return score
+  }
+
+  const strength = getStrength(password)
+  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong']
+  const colors = ['', 'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-emerald-500', 'bg-emerald-600']
+  const textColors = ['', 'text-red-500', 'text-orange-500', 'text-amber-500', 'text-emerald-500', 'text-emerald-600']
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex gap-1">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+              i < strength ? colors[strength] : 'bg-muted'
+            }`}
+          />
+        ))}
+      </div>
+      <p className={`text-[10px] mt-0.5 ${textColors[strength]}`}>
+        {labels[strength]}
+      </p>
+    </div>
+  )
+}
 
 export function AuthScreen() {
   const { login, register, isLoading, error, clearError } = useAuthStore()
@@ -55,6 +153,15 @@ export function AuthScreen() {
   const [registerName, setRegisterName] = useState('')
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
+  const [testimonialIndex, setTestimonialIndex] = useState(0)
+
+  // Rotate testimonials
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTestimonialIndex((prev) => (prev + 1) % TESTIMONIALS.length)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
   const handleTabChange = (value: string) => {
     setActiveTab(value)
@@ -105,7 +212,7 @@ export function AuthScreen() {
           <h1 className="text-4xl xl:text-5xl font-bold tracking-tight leading-tight mb-4">
             Build websites with
             <br />
-            <span className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent animate-gradient-shift">
               AI superpowers
             </span>
           </h1>
@@ -137,14 +244,58 @@ export function AuthScreen() {
             ))}
           </div>
 
-          {/* Trust Metrics */}
-          <div className="flex items-center gap-8">
+          {/* Trust Metrics with animated counters */}
+          <div className="flex items-center gap-8 mb-10">
             {TRUST_METRICS.map((metric) => (
               <div key={metric.label}>
-                <div className="text-2xl font-bold">{metric.value}</div>
+                <div className="text-2xl font-bold">
+                  <AnimatedCounter value={metric.value} suffix={metric.suffix} />
+                </div>
                 <div className="text-xs text-muted-foreground">{metric.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* Rotating Testimonial */}
+          <div className="relative">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={testimonialIndex}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.4 }}
+                className="bg-card/60 backdrop-blur-sm border border-border/30 rounded-xl p-4 max-w-md"
+              >
+                <Quote className="w-4 h-4 text-emerald-500 mb-2" />
+                <p className="text-sm text-muted-foreground italic leading-relaxed">
+                  &ldquo;{TESTIMONIALS[testimonialIndex].quote}&rdquo;
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                    <span className="text-[9px] font-bold text-white">
+                      {TESTIMONIALS[testimonialIndex].author.charAt(0)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium">{TESTIMONIALS[testimonialIndex].author}</span>
+                    <span className="text-[10px] text-muted-foreground block">{TESTIMONIALS[testimonialIndex].role}</span>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+            {/* Dots indicator */}
+            <div className="flex items-center gap-1 mt-3">
+              {TESTIMONIALS.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setTestimonialIndex(i)}
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    i === testimonialIndex ? 'bg-emerald-500 w-4' : 'bg-muted-foreground/30'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </motion.div>
       </div>
@@ -168,6 +319,23 @@ export function AuthScreen() {
               </span>
             </div>
             <ThemeToggle />
+          </div>
+
+          {/* AI Ready Badge */}
+          <div className="flex justify-center mb-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 animate-pulse-glow"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-medium">AI is ready</span>
+              <Bot className="w-3 h-3" />
+            </motion.div>
           </div>
 
           {/* Auth Card */}
@@ -253,6 +421,44 @@ export function AuthScreen() {
                           )}
                           Sign In
                         </Button>
+
+                        {/* Social Login Buttons */}
+                        <div className="relative my-3">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 text-xs relative overflow-hidden group"
+                            onClick={() => toast.info('Google sign-in coming soon!')}
+                          >
+                            <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24">
+                              <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                              <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                              <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                              <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                            </svg>
+                            Google
+                            <span className="absolute inset-0 bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 text-xs relative overflow-hidden group"
+                            onClick={() => toast.info('GitHub sign-in coming soon!')}
+                          >
+                            <Github className="w-3.5 h-3.5 mr-1.5" />
+                            GitHub
+                            <span className="absolute inset-0 bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Button>
+                        </div>
+
                         <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                           <Keyboard className="w-3 h-3" />
                           <span>Press <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-[10px]">Enter</kbd> to submit</span>
@@ -304,6 +510,7 @@ export function AuthScreen() {
                             required
                             minLength={4}
                           />
+                          <PasswordStrength password={registerPassword} />
                         </div>
                         <AnimatePresence>
                           {error && (
@@ -329,6 +536,44 @@ export function AuthScreen() {
                           )}
                           Create Account
                         </Button>
+
+                        {/* Social Login Buttons */}
+                        <div className="relative my-3">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 text-xs relative overflow-hidden group"
+                            onClick={() => toast.info('Google sign-in coming soon!')}
+                          >
+                            <svg className="w-3.5 h-3.5 mr-1.5" viewBox="0 0 24 24">
+                              <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                              <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                              <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                              <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                            </svg>
+                            Google
+                            <span className="absolute inset-0 bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9 text-xs relative overflow-hidden group"
+                            onClick={() => toast.info('GitHub sign-in coming soon!')}
+                          >
+                            <Github className="w-3.5 h-3.5 mr-1.5" />
+                            GitHub
+                            <span className="absolute inset-0 bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Button>
+                        </div>
+
                         <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                           <Keyboard className="w-3 h-3" />
                           <span>Press <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-[10px]">Enter</kbd> to submit</span>
@@ -370,7 +615,9 @@ export function AuthScreen() {
               {TRUST_METRICS.map((metric) => (
                 <div key={metric.label} className="flex items-center gap-1">
                   <Check className="w-3 h-3 text-emerald-500" />
-                  <span className="text-xs font-medium">{metric.value} {metric.label}</span>
+                  <span className="text-xs font-medium">
+                    {metric.value >= 1000 ? `${metric.value / 1000}K` : metric.value}{metric.suffix} {metric.label}
+                  </span>
                 </div>
               ))}
             </div>
