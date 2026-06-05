@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import { TemplatesMarketplace, type Template } from '@/components/templates-marketplace'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -293,7 +294,20 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [loading, setLoading] = useState(true)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [showConfetti, setShowConfetti] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Project reorder state (localStorage)
+  const [projectOrder, setProjectOrder] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const stored = localStorage.getItem('builderai-project-order')
+      return stored ? JSON.parse(stored) : []
+    } catch { return [] }
+  })
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   // Simulate skeleton loading on initial mount
   useEffect(() => {
@@ -325,6 +339,9 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
       setShowCreate(false)
       setNewName('')
       setNewDesc('')
+      // Confetti/sparkle effect
+      setShowConfetti(true)
+      setTimeout(() => setShowConfetti(false), 2000)
       await selectProject(project.id)
     } catch {
     } finally {
@@ -337,10 +354,63 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
     await deleteProject(id)
   }
 
+  const handleUseTemplate = async (template: Template) => {
+    setCreating(true)
+    try {
+      const project = await createProject(template.name, template.description)
+      setShowTemplates(false)
+      await selectProject(project.id)
+      toast.success(`Created project from "${template.name}" template`)
+    } catch {
+      toast.error('Failed to create project from template')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  // Sort by custom order if available
+  const sortedProjects = useMemo(() => {
+    if (projectOrder.length === 0) return filteredProjects
+    const ordered = [...filteredProjects].sort((a, b) => {
+      const aIdx = projectOrder.indexOf(a.id)
+      const bIdx = projectOrder.indexOf(b.id)
+      if (aIdx === -1 && bIdx === -1) return 0
+      if (aIdx === -1) return 1
+      if (bIdx === -1) return -1
+      return aIdx - bIdx
+    })
+    return ordered
+  }, [filteredProjects, projectOrder])
+
+  const handleDragStart = useCallback((id: string) => {
+    setDraggedId(id)
+  }, [])
+
+  const handleDragOverCard = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    setDragOverId(id)
+  }, [])
+
+  const handleDragEnd = useCallback(() => {
+    if (draggedId && dragOverId && draggedId !== dragOverId) {
+      const newOrder = sortedProjects.map(p => p.id)
+      const fromIdx = newOrder.indexOf(draggedId)
+      const toIdx = newOrder.indexOf(dragOverId)
+      if (fromIdx !== -1 && toIdx !== -1) {
+        newOrder.splice(fromIdx, 1)
+        newOrder.splice(toIdx, 0, draggedId)
+        setProjectOrder(newOrder)
+        localStorage.setItem('builderai-project-order', JSON.stringify(newOrder))
+      }
+    }
+    setDraggedId(null)
+    setDragOverId(null)
+  }, [draggedId, dragOverId, sortedProjects])
 
   const totalFiles = projects.reduce((sum, p) => sum + (p.files?.length || 0), 0)
 
@@ -354,7 +424,40 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
     .slice(0, 5)
 
   return (
-    <div className="min-h-screen flex flex-col bg-background page-transition">
+    <div className="min-h-screen flex flex-col bg-background page-transition relative">
+      {/* Confetti/Sparkle overlay */}
+      <AnimatePresence>
+        {showConfetti && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 pointer-events-none z-[100] overflow-hidden"
+          >
+            {Array.from({ length: 24 }).map((_, i) => {
+              const x = Math.random() * 100
+              const delay = Math.random() * 0.5
+              const size = 4 + Math.random() * 8
+              const hue = 150 + Math.random() * 40
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ y: -20, x: `${x}vw`, opacity: 1, rotate: 0 }}
+                  animate={{ y: '100vh', opacity: 0, rotate: 360 + Math.random() * 360 }}
+                  transition={{ duration: 1.5 + Math.random(), delay, ease: 'easeOut' }}
+                  className="absolute rounded-sm"
+                  style={{
+                    width: size,
+                    height: size,
+                    backgroundColor: `hsl(${hue}, 70%, 55%)`,
+                    borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+                  }}
+                />
+              )
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
@@ -416,15 +519,26 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   </p>
                 </div>
                 {/* New Project button with animated gradient border */}
-                <div className="relative group">
-                  <div className="absolute -inset-0.5 gradient-border-emerald rounded-lg opacity-50 group-hover:opacity-100 blur-sm transition-opacity" />
-                  <BrandButton
-                    icon={Plus}
-                    onClick={() => setShowCreate(true)}
-                    className="relative shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 min-h-[44px]"
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="relative group">
+                    <div className="absolute -inset-0.5 gradient-border-emerald rounded-lg opacity-50 group-hover:opacity-100 blur-sm transition-opacity" />
+                    <BrandButton
+                      icon={Plus}
+                      onClick={() => setShowCreate(true)}
+                      className="relative shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 min-h-[44px]"
+                    >
+                      New Project
+                    </BrandButton>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTemplates(true)}
+                    className="h-9 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 min-h-[44px] sm:min-h-0"
                   >
-                    New Project
-                  </BrandButton>
+                    <Layers className="w-3.5 h-3.5 mr-1.5" />
+                    Browse Templates
+                  </Button>
                 </div>
               </motion.div>
             </div>
@@ -477,7 +591,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                 {[
                   { icon: Plus, label: 'New Project', desc: 'Start from scratch', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/50 dark:border-emerald-800/50', action: () => setShowCreate(true) },
                   { icon: Upload, label: 'Import', desc: 'Import existing code', color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30 border-teal-200/50 dark:border-teal-800/50', action: () => toast.info('Import coming soon!') },
-                  { icon: Layers, label: 'Templates', desc: 'Browse templates', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30 border-violet-200/50 dark:border-violet-800/50', action: () => setShowCreate(true) },
+                  { icon: Layers, label: 'Templates', desc: 'Browse templates', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30 border-violet-200/50 dark:border-violet-800/50', action: () => setShowTemplates(true) },
                   { icon: BookOpen, label: 'Learn', desc: 'Guides & docs', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/50', action: () => toast.info('Documentation coming soon!') },
                 ].map((item, i) => (
                   <motion.button
@@ -631,22 +745,31 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-center py-10 sm:py-12"
+                className="text-center py-10 sm:py-12 relative"
               >
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 flex items-center justify-center mx-auto mb-3 sm:mb-4 animate-float">
-                  <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-500" />
+                {/* Animated CSS shapes background */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div className="absolute top-8 left-[15%] w-12 h-12 rounded-xl border-2 border-emerald-200/30 dark:border-emerald-700/20 rotate-12 animate-float" />
+                  <div className="absolute top-16 right-[20%] w-8 h-8 rounded-full border-2 border-teal-200/30 dark:border-teal-700/20 animate-float" style={{ animationDelay: '1s' }} />
+                  <div className="absolute bottom-16 left-[25%] w-6 h-6 rounded-sm bg-emerald-100/30 dark:bg-emerald-900/20 rotate-45 animate-float" style={{ animationDelay: '0.5s' }} />
+                  <div className="absolute bottom-8 right-[30%] w-10 h-10 rounded-lg border-2 border-violet-200/30 dark:border-violet-700/20 -rotate-12 animate-float" style={{ animationDelay: '1.5s' }} />
                 </div>
-                <h3 className="text-base sm:text-lg font-semibold">No projects yet</h3>
-                <p className="text-sm text-muted-foreground mt-1 mb-4">
-                  Create your first project to start building with AI
-                </p>
-                <Button
-                  onClick={() => setShowCreate(true)}
-                  className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px]"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Project
-                </Button>
+                <div className="relative z-10">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 flex items-center justify-center mx-auto mb-3 sm:mb-4 animate-float ring-1 ring-emerald-500/10">
+                    <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-500" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-semibold">No projects yet</h3>
+                  <p className="text-sm text-muted-foreground mt-1 mb-4">
+                    Create your first project to start building with AI
+                  </p>
+                  <Button
+                    onClick={() => setShowCreate(true)}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px]"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Project
+                  </Button>
+                </div>
               </motion.div>
             ) : (
               <>
@@ -659,15 +782,15 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                 {viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     <AnimatePresence>
-                      {filteredProjects.map((project, i) => (
-                        <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
+                      {sortedProjects.map((project, i) => (
+                        <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} draggedId={draggedId} dragOverId={dragOverId} onDragStart={handleDragStart} onDragOver={handleDragOverCard} onDragEnd={handleDragEnd} />
                       ))}
                     </AnimatePresence>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <AnimatePresence>
-                      {filteredProjects.map((project, i) => (
+                      {sortedProjects.map((project, i) => (
                         <ProjectListItem key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} />
                       ))}
                     </AnimatePresence>
@@ -745,18 +868,31 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
       </Dialog>
       {/* Keyboard Shortcut Help Dialog */}
       <KeyboardShortcutHelp />
+      {/* Templates Marketplace Dialog */}
+      <TemplatesMarketplace
+        open={showTemplates}
+        onOpenChange={setShowTemplates}
+        onUseTemplate={handleUseTemplate}
+      />
     </div>
   )
 }
 
-function ProjectCard({ project, index, onSelect, onDelete }: {
+function ProjectCard({ project, index, onSelect, onDelete, draggedId, dragOverId, onDragStart, onDragOver, onDragEnd }: {
   project: any
   index: number
   onSelect: (id: string) => void
   onDelete: (e: React.MouseEvent, id: string) => Promise<void>
+  draggedId: string | null
+  dragOverId: string | null
+  onDragStart: (id: string) => void
+  onDragOver: (e: React.DragEvent, id: string) => void
+  onDragEnd: () => void
 }) {
   const StatusIcon = STATUS_ICONS[project.status] || FileCode
   const wasEditedRecently = (Date.now() - new Date(project.updatedAt).getTime()) < 3600000 // 1 hour
+  const isDragging = draggedId === project.id
+  const isDragOver = dragOverId === project.id
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -764,6 +900,11 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ delay: index * 0.05 }}
       whileHover={{ scale: 1.02 }}
+      draggable
+      onDragStart={() => onDragStart(project.id)}
+      onDragOver={(e) => onDragOver(e, project.id)}
+      onDragEnd={onDragEnd}
+      className={`${isDragging ? 'opacity-50 scale-95' : ''} ${isDragOver ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}`}
     >
       <Card
         className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] gradient-border-hover"

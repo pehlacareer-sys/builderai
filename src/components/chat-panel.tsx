@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import ReactMarkdown from 'react-markdown'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,12 +18,14 @@ import {
   Plus, MessageSquare, Code, Keyboard,
   Copy, Check, ThumbsUp, ThumbsDown, RefreshCw,
   ChevronDown, FileCode, GitCompare, Download,
-  Hash
+  Hash, Pin, Quote as QuoteIcon, Trash2, ChevronUp,
+  ArrowDown, X
 } from 'lucide-react'
 import { ModelSelector } from '@/components/model-selector'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { toast } from 'sonner'
 import { DiffDialog, FileDiff as FileDiffType } from '@/components/file-diff-viewer'
+import { ChatContextMenu } from '@/components/chat-context-menu'
 
 const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   planner: { icon: Brain, color: 'text-violet-500 bg-violet-50 dark:bg-violet-950/30', label: 'Planner' },
@@ -33,7 +36,95 @@ const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; lab
   assistant: { icon: Bot, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30', label: 'AI' },
 }
 
-// Wave/sound animation when AI is typing (like ChatGPT dots but more polished)
+// ─── Pinned Messages State (localStorage) ──────────────────────────────────
+
+function getPinnedMessages(conversationId: string): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const stored = localStorage.getItem(`builderai-pinned-${conversationId}`)
+    return stored ? JSON.parse(stored) : {}
+  } catch {
+    return {}
+  }
+}
+
+function savePinnedMessages(conversationId: string, pinned: Record<string, string>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`builderai-pinned-${conversationId}`, JSON.stringify(pinned))
+  } catch {}
+}
+
+// ─── Deleted Messages State (localStorage) ─────────────────────────────────
+
+function getDeletedMessages(conversationId: string): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const stored = localStorage.getItem(`builderai-deleted-${conversationId}`)
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDeletedMessages(conversationId: string, deleted: Set<string>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(`builderai-deleted-${conversationId}`, JSON.stringify([...deleted]))
+  } catch {}
+}
+
+// ─── Code Block with Copy Button ───────────────────────────────────────────
+
+function CodeBlock({ children, className, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const match = /language-(\w+)/.exec(className || '')
+  const language = match ? match[1] : null
+
+  const handleCopyCode = async () => {
+    const codeEl = (props as any).node as HTMLElement
+    const text = codeEl?.textContent || ''
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
+
+  // Extract the text content from children for the copy button
+  const getCodeText = () => {
+    if (typeof children === 'string') return children
+    if (Array.isArray(children)) return children.join('')
+    return ''
+  }
+
+  return (
+    <div className="relative group/code">
+      {language && (
+        <div className="absolute top-0 right-12 flex items-center gap-1 px-2 py-1 text-[9px] font-mono text-muted-foreground/60 bg-background/80 rounded-bl border-b border-r border-border/30">
+          {language}
+        </div>
+      )}
+      <button
+        onClick={handleCopyCode}
+        className="absolute top-1 right-1 p-1 rounded-md bg-muted/80 hover:bg-muted transition-colors opacity-0 group-hover/code:opacity-100 z-10"
+        title="Copy code"
+      >
+        {copied ? (
+          <Check className="w-3 h-3 text-emerald-500" />
+        ) : (
+          <Copy className="w-3 h-3 text-muted-foreground" />
+        )}
+      </button>
+      <code className={className} {...props}>
+        {children}
+      </code>
+    </div>
+  )
+}
+
+// ─── Wave/sound animation when AI is typing ────────────────────────────────
+
 function WaveTypingIndicator({ agentKey }: { agentKey?: string }) {
   const agentLabel = agentKey ? AGENT_CONFIG[agentKey]?.label || 'AI' : 'AI'
   const agentColor = agentKey ? AGENT_CONFIG[agentKey]?.color || 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
@@ -65,7 +156,8 @@ function WaveTypingIndicator({ agentKey }: { agentKey?: string }) {
   )
 }
 
-// Token counter component
+// ─── Token Counter ─────────────────────────────────────────────────────────
+
 function TokenCounter({ messages }: { messages: ChatMessage[] }) {
   const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0)
   const estimatedTokens = Math.round(totalChars / 4)
@@ -89,7 +181,8 @@ function TokenCounter({ messages }: { messages: ChatMessage[] }) {
   )
 }
 
-// Vertical timeline agent pipeline visualization
+// ─── Agent Pipeline Timeline ───────────────────────────────────────────────
+
 function AgentPipelineTimeline() {
   const { agentPipeline, isProcessing, currentAgent } = useChatStore()
 
@@ -153,13 +246,22 @@ function AgentPipelineTimeline() {
   )
 }
 
-// Message reactions (stored locally)
+// ─── Message Reactions (stored locally) ────────────────────────────────────
+
 const messageReactions: Record<string, 'up' | 'down' | null> = {}
 
-function MessageBubble({ message, isLastAiMessage, onRegenerate }: {
+// ─── Message Bubble with Context Menu ──────────────────────────────────────
+
+function MessageBubble({ message, isLastAiMessage, onRegenerate, onQuote, isGrouped, pinnedMessages, onPinMessage, onUnpinMessage, onDeleteMessage }: {
   message: ChatMessage
   isLastAiMessage: boolean
   onRegenerate?: () => void
+  onQuote?: (text: string) => void
+  isGrouped: boolean
+  pinnedMessages: Record<string, string>
+  onPinMessage: (id: string, content: string) => void
+  onUnpinMessage: (id: string) => void
+  onDeleteMessage: (id: string) => void
 }) {
   const isUser = message.role === 'user'
   const config = AGENT_CONFIG[message.role]
@@ -167,6 +269,7 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate }: {
   const [copied, setCopied] = useState(false)
   const [reaction, setReaction] = useState<'up' | 'down' | null>(messageReactions[message.id || ''] || null)
   const [showActions, setShowActions] = useState(false)
+  const isPinned = !!(message.id && pinnedMessages[message.id])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content)
@@ -189,53 +292,73 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate }: {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
-  return (
+  const messageContent = (
     <motion.div
-      initial={{ opacity: 0, y: 5 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-2.5 group ${isUser ? 'flex-row-reverse' : ''}`}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className={`flex gap-2.5 group relative ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'mt-0.5' : 'mt-3'}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
-      <Avatar className="h-6 w-6 flex-shrink-0 mt-1">
-        <AvatarFallback className={isUser ? 'bg-primary text-primary-foreground text-[10px]' : `${config?.color || 'bg-muted'} text-[10px]`}>
-          <Icon className="w-3 h-3" />
-        </AvatarFallback>
-      </Avatar>
+      {/* Avatar - hide for grouped messages */}
+      {!isGrouped ? (
+        <Avatar className="h-6 w-6 flex-shrink-0 mt-1">
+          <AvatarFallback className={isUser ? 'bg-primary text-primary-foreground text-[10px]' : `${config?.color || 'bg-muted'} text-[10px]`}>
+            <Icon className="w-3 h-3" />
+          </AvatarFallback>
+        </Avatar>
+      ) : (
+        <div className="w-6 flex-shrink-0" />
+      )}
+
       <div className={`flex-1 min-w-0 ${isUser ? 'text-right' : ''}`}>
-        <div className="flex items-center gap-1.5 mb-0.5">
-          {!isUser && (
-            <span className="text-[10px] font-medium text-muted-foreground">
-              {config?.label || 'AI'}
-            </span>
-          )}
-          {message.createdAt && (
-            <span className="text-[9px] text-muted-foreground/50">
-              {formatTimestamp(message.createdAt)}
-            </span>
-          )}
-        </div>
+        {/* Role label and timestamp - only show for non-grouped */}
+        {!isGrouped && (
+          <div className="flex items-center gap-1.5 mb-0.5">
+            {!isUser && (
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {config?.label || 'AI'}
+              </span>
+            )}
+            {message.createdAt && (
+              <span className="text-[9px] text-muted-foreground/50">
+                {formatTimestamp(message.createdAt)}
+              </span>
+            )}
+            {isPinned && (
+              <Pin className="w-2.5 h-2.5 text-emerald-500" />
+            )}
+          </div>
+        )}
+
         <div
           className={`inline-block text-left rounded-xl px-3 py-2 text-sm max-w-full overflow-hidden ${
             isUser
               ? 'bg-primary text-primary-foreground'
+              : isGrouped
+              ? 'bg-muted/30'
               : 'bg-muted/50'
           }`}
         >
           <div className="prose prose-sm dark:prose-invert max-w-none break-words
-            [&_pre]:bg-background [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-x-auto [&_pre]:border [&_pre]:border-border/30
+            [&_pre]:bg-background [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:overflow-x-auto [&_pre]:border [&_pre]:border-border/30 [&_pre]:relative [&_pre]:group/code
             [&_code]:text-xs [&_code]:bg-muted/50 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:before:content-none [&_code]:after:content-none
             [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none
             [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm
             [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:p-1.5 [&_th]:text-xs [&_th]:bg-muted/30 [&_td]:border [&_td]:p-1.5 [&_td]:text-xs
             [&_ul]:list-disc [&_ol]:list-decimal [&_li]:text-xs
           ">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                code: CodeBlock as any,
+              }}
+            >{message.content}</ReactMarkdown>
           </div>
         </div>
 
-        {/* Action buttons - show on hover for non-user messages */}
-        {!isUser && showActions && (
+        {/* Hover actions bar - floating at top-right */}
+        {showActions && (
           <motion.div
             initial={{ opacity: 0, y: -3 }}
             animate={{ opacity: 1, y: 0 }}
@@ -259,33 +382,37 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate }: {
               </Tooltip>
             </TooltipProvider>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => handleReaction('up')}
-                    className={`p-1 rounded-md hover:bg-muted transition-colors ${reaction === 'up' ? 'text-emerald-500' : 'text-muted-foreground'}`}
-                  >
-                    <ThumbsUp className="w-3 h-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-[10px]">Helpful</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {!isUser && (
+              <>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleReaction('up')}
+                        className={`p-1 rounded-md hover:bg-muted transition-colors ${reaction === 'up' ? 'text-emerald-500' : 'text-muted-foreground'}`}
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-[10px]">Helpful</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => handleReaction('down')}
-                    className={`p-1 rounded-md hover:bg-muted transition-colors ${reaction === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}
-                  >
-                    <ThumbsDown className="w-3 h-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-[10px]">Not helpful</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleReaction('down')}
+                        className={`p-1 rounded-md hover:bg-muted transition-colors ${reaction === 'down' ? 'text-red-500' : 'text-muted-foreground'}`}
+                      >
+                        <ThumbsDown className="w-3 h-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-[10px]">Not helpful</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </>
+            )}
 
             {isLastAiMessage && onRegenerate && (
               <TooltipProvider>
@@ -307,7 +434,74 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate }: {
       </div>
     </motion.div>
   )
+
+  // Wrap with context menu
+  return (
+    <ChatContextMenu
+      messageContent={message.content}
+      messageRole={message.role}
+      messageId={message.id}
+      isPinned={isPinned}
+      onQuote={onQuote}
+      onPin={onPinMessage}
+      onUnpin={onUnpinMessage}
+      onDelete={onDeleteMessage}
+      onRegenerate={isLastAiMessage ? onRegenerate : undefined}
+    >
+      <div>{messageContent}</div>
+    </ChatContextMenu>
+  )
 }
+
+// ─── Pinned Messages Section ───────────────────────────────────────────────
+
+function PinnedMessagesSection({ pinnedMessages, onUnpin }: {
+  pinnedMessages: Record<string, string>
+  onUnpin: (id: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  const entries = Object.entries(pinnedMessages)
+
+  if (entries.length === 0) return null
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-1.5 bg-emerald-50/50 dark:bg-emerald-950/10 hover:bg-emerald-100/50 dark:hover:bg-emerald-950/20 transition-colors">
+        <Pin className="w-3 h-3 text-emerald-500" />
+        <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+          {entries.length} Pinned Message{entries.length !== 1 ? 's' : ''}
+        </span>
+        {open ? (
+          <ChevronUp className="w-3 h-3 text-muted-foreground ml-auto" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-muted-foreground ml-auto" />
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-3 py-2 space-y-1.5">
+          {entries.map(([id, content]) => (
+            <div
+              key={id}
+              className="flex items-start gap-2 p-2 rounded-lg bg-emerald-50/30 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/30"
+            >
+              <Pin className="w-2.5 h-2.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-muted-foreground line-clamp-2 flex-1">{content}</p>
+              <button
+                onClick={() => onUnpin(id)}
+                className="p-0.5 rounded hover:bg-muted transition-colors flex-shrink-0"
+                title="Unpin"
+              >
+                <X className="w-2.5 h-2.5 text-muted-foreground hover:text-foreground" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+// ─── Main Chat Panel ───────────────────────────────────────────────────────
 
 export function ChatPanel() {
   const {
@@ -324,6 +518,49 @@ export function ChatPanel() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [scrollProgress, setScrollProgress] = useState(0)
   const [diffDialogOpen, setDiffDialogOpen] = useState(false)
+
+  // Pinned & deleted messages
+  const convId = currentConversation?.id || 'default'
+  const [pinnedMessages, setPinnedMessages] = useState<Record<string, string>>(() => getPinnedMessages(convId))
+  const [deletedMessageIds, setDeletedMessageIds] = useState<Set<string>>(() => getDeletedMessages(convId))
+
+  // Sync with conversation changes
+  useEffect(() => {
+    setPinnedMessages(getPinnedMessages(convId))
+    setDeletedMessageIds(getDeletedMessages(convId))
+  }, [convId])
+
+  const handlePinMessage = useCallback((id: string, content: string) => {
+    setPinnedMessages(prev => {
+      const next = { ...prev, [id]: content }
+      savePinnedMessages(convId, next)
+      return next
+    })
+  }, [convId])
+
+  const handleUnpinMessage = useCallback((id: string) => {
+    setPinnedMessages(prev => {
+      const next = { ...prev }
+      delete next[id]
+      savePinnedMessages(convId, next)
+      return next
+    })
+  }, [convId])
+
+  const handleDeleteMessage = useCallback((id: string) => {
+    setDeletedMessageIds(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      saveDeletedMessages(convId, next)
+      return next
+    })
+  }, [convId])
+
+  // Quote handler - appends quoted text to input
+  const handleQuote = useCallback((quotedText: string) => {
+    setInput(prev => prev + quotedText)
+    inputRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     if (currentProject) {
@@ -468,8 +705,22 @@ export function ChatPanel() {
     await createConversation(currentProject.id)
   }
 
+  // Filter visible messages (exclude deleted)
+  const visibleMessages = useMemo(() =>
+    messages.filter(m => !m.id || !deletedMessageIds.has(m.id)),
+  [messages, deletedMessageIds])
+
+  // Compute message grouping - consecutive messages from same role are grouped
+  const messageGroups = useMemo(() => {
+    return visibleMessages.map((msg, i) => {
+      const prevMsg = i > 0 ? visibleMessages[i - 1] : null
+      const isGrouped = prevMsg !== null && prevMsg.role === msg.role
+      return { message: msg, isGrouped, index: i }
+    })
+  }, [visibleMessages])
+
   // Find last AI message index for regenerate
-  const lastAiMessageIndex = messages.findLastIndex(m => m.role !== 'user')
+  const lastAiMessageIndex = visibleMessages.findLastIndex(m => m.role !== 'user')
 
   return (
     <div className="flex flex-col h-full">
@@ -490,7 +741,7 @@ export function ChatPanel() {
         </div>
         <div className="flex items-center gap-1">
           {/* Token Counter */}
-          <TokenCounter messages={messages} />
+          <TokenCounter messages={visibleMessages} />
           <div className="w-px h-3 bg-border mx-0.5" />
           <ModelSelector />
           {/* Export chat button */}
@@ -530,6 +781,9 @@ export function ChatPanel() {
         </div>
       )}
 
+      {/* Pinned Messages */}
+      <PinnedMessagesSection pinnedMessages={pinnedMessages} onUnpin={handleUnpinMessage} />
+
       {/* Messages Area - with subtle gradient background */}
       <div className="relative flex-1 overflow-hidden">
         {/* Scroll progress indicator */}
@@ -538,10 +792,10 @@ export function ChatPanel() {
         <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-teal-500/[0.02] dark:from-emerald-500/[0.01] dark:to-teal-500/[0.01] pointer-events-none" />
         <div
           ref={scrollRef}
-          className="h-full overflow-y-auto p-3 space-y-3 scroll-smooth relative"
+          className="h-full overflow-y-auto p-3 scroll-smooth relative"
           onScroll={handleScroll}
         >
-          {messages.length === 0 && !isProcessing && (
+          {visibleMessages.length === 0 && !isProcessing && (
             <div className="flex flex-col items-center justify-center h-full text-center relative">
               {/* Animated background pattern */}
               <div className="absolute inset-0 bg-dot-pattern opacity-40 pointer-events-none" />
@@ -593,17 +847,23 @@ export function ChatPanel() {
           )}
 
           <AnimatePresence>
-            {messages.map((msg, i) => (
+            {messageGroups.map(({ message, isGrouped, index }) => (
               <MessageBubble
-                key={msg.id || i}
-                message={msg}
-                isLastAiMessage={i === lastAiMessageIndex && msg.role !== 'user'}
+                key={message.id || index}
+                message={message}
+                isLastAiMessage={index === lastAiMessageIndex && message.role !== 'user'}
+                onQuote={handleQuote}
+                isGrouped={isGrouped}
+                pinnedMessages={pinnedMessages}
+                onPinMessage={handlePinMessage}
+                onUnpinMessage={handleUnpinMessage}
+                onDeleteMessage={handleDeleteMessage}
               />
             ))}
           </AnimatePresence>
 
           {/* Wave/sound typing indicator */}
-          {isProcessing && messages.length > 0 && (
+          {isProcessing && visibleMessages.length > 0 && (
             <WaveTypingIndicator agentKey={useChatStore.getState().currentAgent?.agent} />
           )}
 
@@ -650,7 +910,6 @@ export function ChatPanel() {
                   <button
                     key={f.path}
                     onClick={() => {
-                      // Try to select the file in the project store
                       const store = useProjectStore.getState()
                       const file = store.files.find(file => file.path === f.path)
                       if (file) {
@@ -668,18 +927,19 @@ export function ChatPanel() {
           )}
         </div>
 
-        {/* Scroll to bottom button */}
+        {/* Scroll to bottom - "New messages" pill */}
         <AnimatePresence>
           {showScrollBtn && (
             <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 10 }}
               onClick={scrollToBottom}
-              className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-background border shadow-md flex items-center justify-center hover:bg-muted transition-colors z-10"
-              title="Scroll to bottom"
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background/90 backdrop-blur-md border shadow-md hover:bg-muted transition-colors z-10 text-xs text-muted-foreground hover:text-foreground"
+              title="Scroll to latest"
             >
-              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              <ArrowDown className="w-3 h-3 text-emerald-500" />
+              <span>New messages</span>
             </motion.button>
           )}
         </AnimatePresence>

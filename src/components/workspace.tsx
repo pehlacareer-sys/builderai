@@ -21,7 +21,7 @@ import {
   PanelLeftClose, PanelLeft, Shield, Wifi,
   History, FolderTree,
   Settings2,
-  Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2,
+  ChevronRight, Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -507,6 +507,7 @@ export function Workspace() {
                 files={files}
                 selectedFileId={currentFile?.id || null}
                 onSelectFile={handleSelectFile}
+                sidebarVisible={fileSheetOpen}
               />
             </div>
           </SheetContent>
@@ -533,6 +534,7 @@ export function Workspace() {
                   files={files}
                   selectedFileId={currentFile?.id || null}
                   onSelectFile={handleSelectFile}
+                  sidebarVisible={mobileTab === 'files'}
                 />
               </div>
             </div>
@@ -665,11 +667,15 @@ export function Workspace() {
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <Separator orientation="vertical" className="h-5" />
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
-            <Zap className="w-3 h-3 text-white" />
-          </div>
-          <span className="text-sm font-semibold truncate">{currentProject.name}</span>
+        {/* Breadcrumb trail */}
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground min-w-0">
+          <button onClick={clearCurrentProject} className="hover:text-foreground transition-colors truncate">Dashboard</button>
+          <ChevronRight className="w-3 h-3 flex-shrink-0" />
+          <span className="text-foreground font-medium truncate max-w-[120px]">{currentProject.name}</span>
+          <ChevronRight className="w-3 h-3 flex-shrink-0" />
+          <span className="text-emerald-600 dark:text-emerald-400 capitalize truncate">{rightPanel}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0 ml-1">
           <Badge variant="secondary" className={`text-[10px] px-1.5 ${STATUS_COLORS[currentProject.status]}`}>
             {currentProject.status}
           </Badge>
@@ -744,7 +750,7 @@ export function Workspace() {
         {!focusMode && (
           <>
             <div
-              className="border-r flex-shrink-0 overflow-hidden transition-all duration-200 hidden md:block"
+              className="border-r flex-shrink-0 overflow-hidden transition-all duration-300 hidden md:block"
               style={{ width: sidebarOpen ? 220 : 0 }}
             >
               <div className="h-full w-[220px] flex flex-col">
@@ -758,6 +764,7 @@ export function Workspace() {
                   files={files}
                   selectedFileId={currentFile?.id || null}
                   onSelectFile={selectFile}
+                  sidebarVisible={sidebarOpen}
                 />
               </div>
             </div>
@@ -785,7 +792,7 @@ export function Workspace() {
               <ResizablePanel defaultSize={55} minSize={30}>
                 <ChatPanel />
               </ResizablePanel>
-              <ResizableHandle withHandle className="bg-border/50 hover:bg-emerald-500/20 transition-colors" />
+              <ResizableHandle withHandle className="bg-border/50 hover:bg-emerald-500/20 transition-colors group/resizable-handle" />
             </>
           )}
 
