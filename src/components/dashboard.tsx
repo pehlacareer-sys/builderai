@@ -29,7 +29,6 @@ import { toast } from 'sonner'
 import { TemplatesMarketplace, type Template } from '@/components/templates-marketplace'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ActivityFeed, generateMockActivities, type ActivityItem } from '@/components/activity-feed'
-import { DeploymentWizard } from '@/components/deployment-wizard'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -56,6 +55,7 @@ const STATUS_ICONS: Record<string, React.ElementType> = {
 
 function StatCounter({ value, duration = 1200 }: { value: number; duration?: number }) {
   const [count, setCount] = useState(0)
+  const [shimmering, setShimmering] = useState(true)
 
   useEffect(() => {
     const startTime = performance.now()
@@ -66,11 +66,12 @@ function StatCounter({ value, duration = 1200 }: { value: number; duration?: num
       const current = Math.floor(eased * value)
       setCount(current)
       if (progress < 1) requestAnimationFrame(step)
+      else setShimmering(false)
     }
     requestAnimationFrame(step)
   }, [value, duration])
 
-  return <span>{count}</span>
+  return <span className={shimmering ? 'stat-shimmer' : ''}>{count}</span>
 }
 
 // ─── Activity Feed Item ────────────────────────────────────────────────────
@@ -299,8 +300,6 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   const [loading, setLoading] = useState(true)
   const [showTemplates, setShowTemplates] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
-  const [deployWizardOpen, setDeployWizardOpen] = useState(false)
-  const [deployProject, setDeployProject] = useState<{ name: string; id: string; files?: any[] } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Project reorder state (localStorage)
@@ -425,8 +424,12 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   // ─── Handle Deploy from card ──────────────────────────────────────────
   const handleDeployProject = useCallback((e: React.MouseEvent, project: any) => {
     e.stopPropagation()
-    setDeployProject({ name: project.name, id: project.id, files: project.files })
-    setDeployWizardOpen(true)
+    // Dashboard projects don't include files (not loaded from list API),
+    // so the DeploymentWizard would crash with undefined files.
+    // Direct users to the workspace where files are available.
+    toast.info('Open the project first, then use Deploy from the workspace view.', {
+      description: `${project.name} — deployment wizard is available in the workspace`,
+    })
   }, [])
 
   return (
@@ -490,7 +493,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               </AvatarFallback>
             </Avatar>
             <span className="text-xs sm:text-sm font-medium hidden sm:block max-w-[120px] truncate">{user?.name || user?.email}</span>
-            <Button variant="ghost" size="icon" onClick={logout} title="Sign out" className="h-8 w-8 sm:h-9 sm:w-9 min-h-[44px] sm:min-h-0">
+            <Button variant="ghost" size="icon" onClick={() => logout()} title="Sign out" className="h-8 w-8 sm:h-9 sm:w-9 min-h-[44px] sm:min-h-0">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
@@ -596,9 +599,9 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 {[
                   { icon: Plus, label: 'New Project', desc: 'Start from scratch', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/50 dark:border-emerald-800/50', action: () => setShowCreate(true) },
-                  { icon: Upload, label: 'Import', desc: 'Import existing code', color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30 border-teal-200/50 dark:border-teal-800/50', action: () => toast.info('Import coming soon!') },
+                  { icon: Upload, label: 'Import', desc: 'Import existing code', color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30 border-teal-200/50 dark:border-teal-800/50', action: () => toast.info('Import feature coming soon! You can paste code directly in the chat.') },
                   { icon: Layers, label: 'Templates', desc: 'Browse templates', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30 border-violet-200/50 dark:border-violet-800/50', action: () => setShowTemplates(true) },
-                  { icon: BookOpen, label: 'Learn', desc: 'Guides & docs', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/50', action: () => toast.info('Documentation coming soon!') },
+                  { icon: BookOpen, label: 'Learn', desc: 'Guides & docs', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/50', action: () => toast.info('Documentation & guides coming soon!') },
                 ].map((item, i) => (
                   <motion.button
                     key={item.label}
@@ -631,9 +634,13 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                 <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">How It Works</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative">
                   {/* Animated connecting lines between steps (desktop only) */}
-                  <div className="hidden lg:block absolute top-1/2 left-[25%] right-[25%] h-px">
-                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-300 dark:from-emerald-700 dark:via-teal-700 dark:to-sky-700 opacity-30" />
-                    <div className="absolute inset-0 animate-line-flow h-full" />
+                  <div className="hidden lg:block absolute top-1/2 left-[12.5%] right-[12.5%] h-[2px] -translate-y-1/2">
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-300/40 via-teal-300/50 to-sky-300/40 dark:from-emerald-700/30 dark:via-teal-700/40 dark:to-sky-700/30" />
+                    <div className="absolute inset-0 animate-line-flow h-full rounded-full" />
+                    {/* Flowing dot indicators on the line */}
+                    <div className="absolute left-[25%] top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-400 dark:bg-emerald-500 animate-pulse" />
+                    <div className="absolute left-[50%] top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-teal-400 dark:bg-teal-500 animate-pulse" style={{ animationDelay: '0.5s' }} />
+                    <div className="absolute left-[75%] top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-sky-400 dark:bg-sky-500 animate-pulse" style={{ animationDelay: '1s' }} />
                   </div>
                   {[
                     { icon: Bot, step: '1', title: 'Describe', desc: 'Tell AI what you want to build', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
@@ -862,16 +869,6 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
         onOpenChange={setShowTemplates}
         onUseTemplate={handleUseTemplate}
       />
-      {/* Deployment Wizard Dialog */}
-      {deployProject && (
-        <DeploymentWizard
-          open={deployWizardOpen}
-          onOpenChange={setDeployWizardOpen}
-          projectName={deployProject.name}
-          projectId={deployProject.id}
-          files={deployProject.files}
-        />
-      )}
     </div>
   )
 }

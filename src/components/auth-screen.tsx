@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -215,6 +215,19 @@ export function AuthScreen() {
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [featureIndex, setFeatureIndex] = useState(0)
 
+  // Spotlight cursor tracking
+  const heroRef = useRef<HTMLDivElement>(null)
+  const [spotlightStyle, setSpotlightStyle] = useState<React.CSSProperties>({})
+
+  const handleHeroMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!heroRef.current) return
+    const rect = heroRef.current.getBoundingClientRect()
+    setSpotlightStyle({
+      left: e.clientX - rect.left,
+      top: e.clientY - rect.top,
+    })
+  }, [])
+
   // Rotate testimonials
   useEffect(() => {
     const timer = setInterval(() => {
@@ -275,7 +288,7 @@ export function AuthScreen() {
       </div>
 
       {/* Left side - Marketing / Hero (hidden on mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 relative z-10 flex-col justify-center px-12 xl:px-20">
+      <div className="hidden lg:flex lg:w-1/2 relative z-10 flex-col justify-center px-12 xl:px-20" ref={heroRef} onMouseMove={handleHeroMouseMove}>
         <motion.div
           initial={{ opacity: 0, x: -30 }}
           animate={{ opacity: 1, x: 0 }}
@@ -293,6 +306,19 @@ export function AuthScreen() {
 
           {/* Animated Grid Background on hero */}
           <div className="relative">
+            {/* Spotlight cursor effect */}
+            <div
+              className="absolute pointer-events-none z-0"
+              style={{
+                width: 400,
+                height: 400,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(16, 185, 129, 0.06) 0%, transparent 70%)',
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 0.15s ease-out, top 0.15s ease-out',
+                ...spotlightStyle,
+              }}
+            />
             <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] dark:opacity-[0.02] pointer-events-none" />
 
             {/* Hero Text with typing animation */}
@@ -319,7 +345,7 @@ export function AuthScreen() {
                 transition={{ delay: 0.3 + i * 0.1 }}
                 className="flex items-start gap-3 group"
               >
-                <div className={`p-2 rounded-lg ${feature.color} flex-shrink-0 transition-transform group-hover:scale-110`}>
+                <div className={`p-2 rounded-lg ${feature.color} flex-shrink-0 feature-icon-hover`}>
                   <feature.icon className="w-4 h-4" />
                 </div>
                 <div>

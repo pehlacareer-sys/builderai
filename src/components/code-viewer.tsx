@@ -103,10 +103,11 @@ function FindReplaceBar({ content, onClose, onHighlight }: {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -5 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -5 }}
-      className="border-b bg-muted/30 px-3 py-2"
+      initial={{ opacity: 0, y: -8, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: 'auto' }}
+      exit={{ opacity: 0, y: -8, height: 0 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className="border-b bg-muted/30 px-3 py-2 overflow-hidden"
     >
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center gap-1.5">
@@ -592,15 +593,18 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
             onChange={(e) => setEditContent(e.target.value)}
             onKeyUp={handleTextareaCursorChange}
             onClick={handleTextareaCursorChange}
-            className={`w-full h-full resize-none bg-[#282c34] text-[#abb2bf] font-mono leading-[1.6] p-3 sm:p-4 outline-none border-none focus:ring-0 ${
+            className={`w-full h-full resize-none bg-[#282c34] text-[#abb2bf] font-mono leading-[1.6] p-3 sm:p-4 outline-none border-none focus:ring-0 edit-glow-border rounded-none ${
               isMobile ? 'text-[13px]' : 'text-[0.8125rem]'
             }`}
             spellCheck={false}
           />
         </div>
       ) : (
-        <ScrollArea className="flex-1">
-          <div className="relative" ref={codeRef}>
+        <ScrollArea className="flex-1 relative">
+          {/* Code fade overlays */}
+          <div className="code-fade-overlay-top" />
+          <div className="code-fade-overlay-bottom" />
+          <div className={`relative ${editMode ? '' : ''}`} ref={codeRef}>
             {/* Indentation guides overlay */}
             {indentGuides.length > 0 && (
               <div className="absolute inset-0 pointer-events-none" style={{ padding: isMobile ? '0.75rem' : '1rem' }}>

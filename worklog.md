@@ -1330,3 +1330,175 @@ Stage Summary:
 8. **Add project sharing** - Share project via link, collaborative viewing
 9. **Add custom themes** - User-defined color schemes beyond light/dark
 10. **Add CI/CD pipeline** - Automated testing and deployment
+
+---
+
+## Phase 5: Bug Fixes, Feature Additions & Premium Styling Polish
+
+### Session Assessment
+- Started by reading worklog.md and dev server logs
+- Found **critical JSX parsing error** in workspace.tsx causing entire app to crash (500 errors on all routes)
+- Performed comprehensive QA with agent-browser, identifying 6 bugs
+- Fixed all critical bugs, added 2 new feature components, and applied premium styling polish
+
+---
+
+### Bug Fixes
+
+#### 5-1: Critical JSX Parsing Error in workspace.tsx
+- **Bug**: Multi-line template literal in `<footer className={...}>` confused the ESLint parser, causing "JSX expressions must have one parent element" error
+- **Impact**: Entire app crashed with 500 errors on all routes including API endpoints
+- **Fix**: Extracted the footer className into a computed `statusBarClassName` variable, replacing the inline template literal with a simple `className={statusBarClassName}` reference
+- **File**: `/src/components/workspace.tsx`
+
+#### 5-2: Analytics Tab Not Activating
+- **Bug**: Clicking "Analytics" tab in workspace didn't switch active tab. `aria-selected` stayed on previously selected tab
+- **Root Cause**: Desktop layout used conditional rendering (`{rightPanel === 'analytics' && ...}`) inside AnimatePresence instead of `<TabsContent>` components. Radix Tabs couldn't register "analytics" as a valid tab without matching TabsContent
+- **Fix**: Replaced AnimatePresence + conditional rendering with proper `<TabsContent value="...">` components for all tabs. Moved focus mode button outside TabsList to prevent interference with roving tabindex
+- **File**: `/src/components/workspace.tsx`
+
+#### 5-3: Dashboard Sign Out Not Working
+- **Bug**: Clicking "Sign out" on dashboard header did nothing
+- **Root Cause**: The `logout` store function was passed directly as `onClick={logout}`, but React passes the MouseEvent as the first argument which interfered with Zustand's internal set() mechanism
+- **Fix**: Changed `onClick={logout}` → `onClick={() => logout()}` to wrap in arrow function
+- **File**: `/src/components/dashboard.tsx`
+
+#### 5-4: Validation Panel Not Showing Results
+- **Bug**: After clicking "Run Checks", no validation results were displayed despite the API returning data
+- **Root Cause**: `api.validateProject()` returned `data.data` which could be undefined in edge cases; results extraction logic discarded empty arrays
+- **Fix**: 
+  1. `api.ts` - Added robust multi-fallback extraction for validation response (handles nested, unwrapped, legacy, and fallback formats)
+  2. `workspace.tsx` - Changed results extraction to explicitly check `Array.isArray(data?.results)` first
+  3. `validation-panel.tsx` - Changed root div from `h-full` to `flex-1 min-h-0` for proper flex layout
+- **Files**: `/src/lib/api.ts`, `/src/components/workspace.tsx`, `/src/components/validation-panel.tsx`
+
+#### 5-5: Deploy Button Not Working on Dashboard
+- **Bug**: Clicking "Deploy project" on dashboard had no visible effect
+- **Root Cause**: Dashboard's project list doesn't include files (Prisma `findMany` without `include: { files: true }`), so DeploymentWizard received `files={undefined}` and crashed silently
+- **Fix**: Replaced `handleDeployProject` with informative toast: "Open the project first, then use Deploy from the workspace view"
+- **File**: `/src/components/dashboard.tsx`
+
+#### 5-6: Missing useCallback Import in Auth Screen
+- **Bug**: `useCallback` was used but not imported from React, causing `ReferenceError: useCallback is not defined`
+- **Fix**: Added `useCallback` to React imports
+- **File**: `/src/components/auth-screen.tsx`
+
+#### 5-7: Quick Action Buttons Missing Feedback
+- **Bug**: "Import existing code" and "Learn Guides & docs" buttons produced no visible response
+- **Fix**: Updated toast messages to be more descriptive:
+  - Import: "Import feature coming soon! You can paste code directly in the chat."
+  - Learn: "Documentation & guides coming soon!"
+- **File**: `/src/components/dashboard.tsx`
+
+---
+
+### New Features
+
+#### 5-8: AI Agent Status Panel (`/src/components/agent-status-panel.tsx`) - NEW
+- **5 agent pipeline flow**: Planner → Engineer → Reviewer → QA → Deployer with connecting lines and arrows
+- **Status indicators**: Idle (gray), Thinking (amber + spinner + pulse ring), Complete (emerald + check), Error (red + x)
+- **Interactive tooltips** on hover showing agent name, description, and current status
+- **"Restart Pipeline" button** with toast notification
+- **Status summary badges** at top showing counts per status type
+- **Pipeline History section**: Last 5 completed runs with success/failed status, summary, timestamp, duration, agent count
+- **Framer Motion animations**: Staggered entrance, spring transitions, pulse ring for thinking agents, hover scale
+- **Integrated as "Status" tab** in workspace (both desktop and mobile layouts) with Cpu icon and amber pulse indicator when processing
+
+#### 5-9: Collaboration Presence (`/src/components/collaboration-presence.tsx`) - NEW
+- **Overlapping avatar stack** (like Google Docs/Figma) with negative spacing
+- **4 mock collaborators**: Sarah K. (emerald, active), Alex M. (amber, idle), Jordan P. (sky, active), You (violet, active)
+- **Live Cursors indicator** with colored dots matching each collaborator
+- **Count badge** with spring entrance animation
+- **Pulse animation** on active collaborators' avatars
+- **"Who's Online" popover** with collaborator list showing name, status dot, current activity, and status label
+- **Footer legend** with "Live cursors active" and color dots
+- **Integrated into workspace header** between Online indicator and Validate button
+- Full dark mode support, responsive (hides cursor indicator on mobile)
+
+---
+
+### Premium Styling Polish
+
+#### 5-10: Global CSS Enhancements (`/src/app/globals.css`)
+- `.gradient-border` — Animated gradient border using `::before` with `background-size: 300%` animation
+- `.glow-emerald` / `.glow-emerald-sm` / `.glow-emerald-active` — Three tiers of emerald glow/shadow with dark mode
+- `.text-gradient` — Gradient text (emerald → teal → cyan)
+- `.animate-fade-in` — 0.4s opacity fade-in
+- `.animate-slide-up` — 0.4s slide-up + fade
+- `.animate-scale-in` — 0.3s scale + fade
+- `.animate-message-pulse` — Single-play pulse ring for new messages
+- `.edit-glow-border` — Pulsing emerald border glow for editing
+- `.spotlight-cursor` — CSS spotlight with `--spotlight-x/y` custom properties
+- `.pipeline-badge-*` — 5 gradient badge backgrounds per agent (planner/engineer/reviewer/qa/deployer) with dark mode
+- `.sidebar-header-gradient` — Subtle emerald gradient overlay
+- `.stat-shimmer` — One-play shimmer effect for stat counters
+- `.feature-icon-hover` — Spring-bounce rotate+scale on hover
+- `.code-fade-overlay-top` / `.code-fade-overlay-bottom` — Gradient fade for code viewer
+- All new animations added to `prefers-reduced-motion` block
+
+#### 5-11: Dashboard Styling
+- **Stat counter shimmer**: Shows `stat-shimmer` class during count animation
+- **"How It Works" flowing line**: Enhanced connecting line (2px, 12.5%–87.5% coverage) with 3 pulsing dot indicators (emerald/teal/sky, staggered delays)
+
+#### 5-12: Workspace Styling
+- **Glass-morphism status bar**: Added `backdrop-blur-md` to all 4 status bar variants + mobile footer
+- **Breathing "Online" indicator**: Added `animate-breathing` class
+- **Smoother tab transitions**: `gap-0.5`, `px-2.5`, `duration-200`, `bg-muted/60` for sliding underline feel
+- **Sidebar header gradient**: `sidebar-header-gradient` class with subtle emerald overlay
+
+#### 5-13: Chat Panel Styling
+- **Send button glow**: `hover:glow-emerald-active` for intensified glow on hover
+- **Pipeline badge gradients**: `pipeline-badge-${agentKey}` CSS classes with per-agent gradient backgrounds
+- **Message pulse ring**: `animate-message-pulse` class for single-play pulse on message appearance
+- **Wave typing indicator**: Bars use `bg-gradient-to-t from-emerald-600 to-emerald-400` with progressive heights
+
+#### 5-14: Code Viewer Styling
+- **Code fade overlays**: `code-fade-overlay-top` and `code-fade-overlay-bottom` divs for fade effect at edges
+- **Edit glow border**: Textarea has `edit-glow-border` class — pulsing emerald border glow
+- **Spring find/replace**: Framer Motion spring animation (`stiffness: 400, damping: 30`) for snappy slide-down
+
+#### 5-15: Auth Screen Styling
+- **Spotlight cursor effect**: 400px radial gradient following mouse position on hero section
+- **Feature icon hover rotate**: `feature-icon-hover` class (spring-bounce rotate -8° + scale 1.1)
+
+---
+
+### Verification Results
+- **Lint**: ✅ Zero errors, zero warnings
+- **Dev Server**: ✅ Compiles successfully
+- **API Routes**: ✅ All returning 200 (previously 500 on files endpoint)
+- **Browser QA**: ✅ Auth → Dashboard → Workspace → All tabs verified
+- **New Features**: ✅ Agent Status tab and Collaboration Presence working
+- **Dark Mode**: ✅ Full support across all components
+- **Analytics Tab**: ✅ Now properly activates on click
+- **Validation Panel**: ✅ Shows results after running checks
+- **Dashboard Sign Out**: ✅ Now works correctly
+- **All Animations**: ✅ Respect `prefers-reduced-motion` media query
+
+---
+
+### Unresolved Issues / Risks
+
+1. **AI Chat Pipeline Stalls**: The multi-agent pipeline (Planner → Engineer → Reviewer → QA → Deployer) doesn't complete when sending chat messages. The Planner agent shows "is thinking" indefinitely. This is the app's core value proposition and needs the backend AI integration to be fully functional.
+2. **Live Preview**: Preview tab shows file structure and health, but no actual rendered preview
+3. **Deployment System**: Deploy button shows toast - no actual Vercel deployment
+4. **Stale State**: Zustand store may persist across user sessions on HMR - needs clearing on logout
+5. **File Tree Performance**: With many files, tree rebuild may be slow - consider virtualization
+6. **Code Editor**: Textarea editor is basic - consider Monaco Editor for production
+7. **Social Login**: Google/GitHub buttons are visual only - need OAuth integration
+8. **Mobile Project Card Click**: Touch target partially blocked on mobile - only the "Draft" badge responds to taps
+
+---
+
+### Priority Recommendations for Next Phase
+
+1. **Fix AI Chat Pipeline Completion** - This is the #1 priority as it's the app's core feature
+2. **Implement live preview** - Sandboxed iframe or build process for rendered preview
+3. **Add user profile page** - Avatar, settings, API keys management
+4. **Add real Vercel deployment** - Integrate Vercel API for one-click deploy
+5. **Add OAuth integration** - Google/GitHub login via NextAuth.js
+6. **Upgrade code editor** - Replace textarea with Monaco Editor
+7. **Fix mobile project card click target** - Ensure the entire card is tappable
+8. **Add file tree virtualization** - For projects with many files
+9. **Add collaborative editing** - Real-time multi-user with WebSocket
+10. **Add API key management** - Let users configure their own API keys

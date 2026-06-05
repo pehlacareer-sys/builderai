@@ -142,11 +142,11 @@ function WaveTypingIndicator({ agentKey }: { agentKey?: string }) {
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="w-[3px] rounded-full bg-emerald-500 animate-wave-bar"
+              className="w-[3px] rounded-full bg-gradient-to-t from-emerald-600 to-emerald-400 animate-wave-bar"
               style={{
-                height: '12px',
-                animationDelay: `${i * 0.15}s`,
-                animationDuration: `${0.6 + i * 0.1}s`,
+                height: `${10 + i * 2}px`,
+                animationDelay: `${i * 0.12}s`,
+                animationDuration: `${0.5 + i * 0.08}s`,
               }}
             />
           ))}
@@ -219,7 +219,7 @@ function AgentPipelineTimeline() {
                 animate={{ opacity: 1, scale: 1 }}
                 className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] whitespace-nowrap transition-all ${
                   isActive
-                    ? `${config.color} font-medium ring-1 ring-current/20`
+                    ? `pipeline-badge-${agentKey} ${config.color} font-medium ring-1 ring-current/20`
                     : isDone
                     ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
                     : 'bg-muted text-muted-foreground'
@@ -297,7 +297,7 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate, onQuote, isGrou
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`flex gap-2.5 group relative ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'mt-0.5' : 'mt-3'}`}
+      className={`flex gap-2.5 group relative ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'mt-0.5' : 'mt-3'} animate-message-pulse`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -989,7 +989,7 @@ export function ChatPanel() {
             <Button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="h-10 w-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white flex-shrink-0 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all animate-pulse-glow disabled:animate-none disabled:shadow-none"
+              className="h-10 w-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white flex-shrink-0 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:glow-emerald-active transition-all animate-pulse-glow disabled:animate-none disabled:shadow-none"
               size="icon"
             >
               <Send className="w-4 h-4" />

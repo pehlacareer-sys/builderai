@@ -262,10 +262,22 @@ class ApiClient {
 
   // Validate
   async validateProject(projectId: string) {
-    const data = await this.fetch<{ success: boolean; data: any[] }>(`/projects/${projectId}/validate`, {
+    const data = await this.fetch<{ success: boolean; data: any }>(`/projects/${projectId}/validate`, {
       method: 'POST',
     })
-    return data.data
+    // Handle both { data: { summary, results } } and direct { summary, results } responses
+    if (data?.data?.results) {
+      return data.data
+    }
+    // Fallback: if data itself has results (unwrapped response)
+    if (data?.results) {
+      return data
+    }
+    // Fallback: if data.data is an array (legacy format)
+    if (Array.isArray(data?.data)) {
+      return { results: data.data, summary: null }
+    }
+    return { results: [], summary: null }
   }
 
   // Export project as ZIP

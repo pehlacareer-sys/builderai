@@ -51,7 +51,7 @@ export function ValidationPanel({
   const total = summary?.total ?? results.length
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="p-4 border-b bg-muted/30">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">

@@ -21,7 +21,7 @@ import {
   PanelLeftClose, PanelLeft, Shield, Wifi,
   History, FolderTree,
   Settings2,
-  ChevronRight, Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2,
+  ChevronRight, Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2, Cpu,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -43,6 +43,8 @@ import { VersionHistoryPanel, type VersionData } from '@/components/version-hist
 import { getLanguageFromPath } from '@/lib/file-utils'
 import { ActivityFeed, ActivityBell, generateMockActivities, type ActivityItem } from '@/components/activity-feed'
 import { DeploymentWizard } from '@/components/deployment-wizard'
+import { AgentStatusPanel } from '@/components/agent-status-panel'
+import { CollaborationPresence } from '@/components/collaboration-presence'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -54,7 +56,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function Workspace() {
   const { currentProject, files, currentFile, selectFile, clearCurrentProject, refreshFiles, projects } = useProjectStore()
   const { user, logout } = useAuthStore()
-  const { generatedFiles, conversations, messages, agentPipeline } = useChatStore()
+  const { generatedFiles, conversations, messages, agentPipeline, isProcessing } = useChatStore()
   const isMobile = useIsMobile()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [rightPanel, setRightPanel] = useState('code')
@@ -229,8 +231,11 @@ export function Workspace() {
     setValidating(true)
     try {
       const data = await api.validateProject(currentProject.id)
-      const results = data?.results || (Array.isArray(data) ? data : [])
-      const summary = data?.summary || null
+      // Robust extraction: handle { results, summary }, plain array, or nested formats
+      const results = Array.isArray(data?.results) ? data.results
+        : Array.isArray(data) ? data
+        : []
+      const summary = data?.summary ?? null
       setValidationResults(results)
       setValidationSummary(summary)
       const passCount = summary?.passed ?? results.filter((r: any) => r.status === 'pass').length
@@ -367,6 +372,15 @@ export function Workspace() {
   // Determine current file language for status bar
   const currentFileLanguage = currentFile?.language || (currentFile ? getLanguageFromPath(currentFile.path) : '')
   const currentLineCount = currentFile?.content ? currentFile.content.split('\n').length : 0
+
+  // Computed status bar className
+  const statusBarClassName = currentProject?.status === 'building'
+    ? 'border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 backdrop-blur-md'
+    : currentProject?.status === 'ready'
+      ? 'border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 backdrop-blur-md'
+      : currentProject?.status === 'deployed'
+        ? 'border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 bg-sky-50/50 dark:bg-sky-950/20 text-sky-700 dark:text-sky-400 backdrop-blur-md'
+        : 'border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 bg-muted/30 text-muted-foreground backdrop-blur-md'
 
   if (!currentProject) return null
 
@@ -576,6 +590,13 @@ export function Workspace() {
                       <Activity className="w-3 h-3 mr-1" />
                       Analytics
                     </TabsTrigger>
+                    <TabsTrigger value="status" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
+                      <Cpu className="w-3 h-3 mr-1" />
+                      Status
+                      {isProcessing && (
+                        <span className="ml-1 w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />
+                      )}
+                    </TabsTrigger>
                   </TabsList>
                 </div>
                 <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
@@ -616,9 +637,15 @@ export function Workspace() {
                     projectId={currentProject.id}
                   />
                 </TabsContent>
+                <TabsContent value="status" className="flex-1 m-0 overflow-hidden">
+                  <AgentStatusPanel
+                    agentPipeline={agentPipeline.map(a => ({ role: a.agent, status: a.status, content: a.message }))}
+                    isProcessing={isProcessing}
+                  />
+                </TabsContent>
               </Tabs>
               {/* Mobile Status Bar */}
-              <footer className="border-t h-6 px-3 flex items-center justify-between text-[10px] text-muted-foreground bg-muted/30 flex-shrink-0">
+              <footer className="border-t h-6 px-3 flex items-center justify-between text-[10px] text-muted-foreground bg-muted/30 backdrop-blur-md flex-shrink-0">
                 <div className="flex items-center gap-3">
                   {currentFile && (
                     <>
@@ -706,13 +733,14 @@ export function Workspace() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           {/* Online indicator with pulse */}
-          <div className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+          <div className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 animate-breathing">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span className="hidden sm:inline">Online</span>
           </div>
+          <CollaborationPresence projectName={currentProject.name} />
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleValidate} disabled={validating}>
             {validating ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
             Validate
@@ -776,7 +804,7 @@ export function Workspace() {
               style={{ width: sidebarOpen ? 220 : 0 }}
             >
               <div className="h-full w-[220px] flex flex-col">
-                <div className="px-3 py-2 border-b flex items-center justify-between">
+                <div className="px-3 py-2 border-b flex items-center justify-between sidebar-header-gradient">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Files</span>
                   <Badge variant="secondary" className="text-[10px] px-1.5">
                     {files.length}
@@ -828,24 +856,24 @@ export function Workspace() {
           <ResizablePanel defaultSize={focusMode ? 100 : 45} minSize={30}>
             <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
               <div className="border-b px-2 flex items-center tab-bar-gradient">
-                <TabsList className="h-9 bg-transparent">
+                <TabsList className="h-9 bg-transparent gap-0.5">
                 <TabsTrigger
                   value="code"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Code2 className="w-3 h-3 mr-1" />
                   Code
                 </TabsTrigger>
                 <TabsTrigger
                   value="preview"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Eye className="w-3 h-3 mr-1" />
                   Preview
                 </TabsTrigger>
                 <TabsTrigger
                   value="validate"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
                   <Shield className="w-3 h-3 mr-1" />
                   Validate
@@ -857,14 +885,14 @@ export function Workspace() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="history"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <History className="w-3 h-3 mr-1" />
                   History
                 </TabsTrigger>
                 <TabsTrigger
                   value="memory"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
                   <Brain className="w-3 h-3 mr-1" />
                   Memory
@@ -874,85 +902,85 @@ export function Workspace() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="analytics"
-                  className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Activity className="w-3 h-3 mr-1" />
                   Analytics
                 </TabsTrigger>
-                {/* Focus mode toggle */}
-                <button
-                  onClick={() => setFocusMode(!focusMode)}
-                  className={`ml-2 p-1 rounded transition-colors ${focusMode ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                  title={focusMode ? 'Exit focus mode' : 'Focus mode'}
+                <TabsTrigger
+                  value="status"
+                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
-                  {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-                </button>
+                  <Cpu className="w-3 h-3 mr-1" />
+                  Status
+                  {isProcessing && (
+                    <span className="ml-1 w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />
+                  )}
+                </TabsTrigger>
               </TabsList>
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={rightPanel}
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.15 }}
-                className="flex-1 overflow-hidden flex flex-col bg-dot-grid-faint"
+              {/* Focus mode toggle - outside TabsList to avoid roving tabindex conflicts */}
+              <button
+                onClick={() => setFocusMode(!focusMode)}
+                className={`ml-2 p-1 rounded transition-colors ${focusMode ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                title={focusMode ? 'Exit focus mode' : 'Focus mode'}
               >
-                {rightPanel === 'code' && (
-                  <CodeViewer
-                    file={currentFile}
-                    onSave={handleSaveFile}
-                    hasUnsavedChanges={hasUnsavedChanges}
-                  />
-                )}
-                {rightPanel === 'preview' && (
-                  <PreviewPanel files={files} projectName={currentProject.name} projectId={currentProject.id} />
-                )}
-                {rightPanel === 'validate' && (
-                  <ValidationPanel
-                    results={validationResults}
-                    summary={validationSummary}
-                    onValidate={handleValidate}
-                    validating={validating}
-                  />
-                )}
-                {rightPanel === 'history' && (
-                  <VersionHistoryPanel
-                    versions={versions}
-                    loading={loadingVersions}
-                    creating={creatingVersion}
-                    onCreateVersion={handleCreateVersion}
-                    onRefresh={loadVersions}
-                    expandedVersions={expandedVersions}
-                    onToggleExpand={toggleVersionExpand}
-                  />
-                )}
-                {rightPanel === 'memory' && (
-                  <ProjectMemoryPanel projectId={currentProject.id} />
-                )}
-                {rightPanel === 'analytics' && (
-                  <ProjectAnalytics
-                    files={files}
-                    conversations={conversations}
-                    messages={messages}
-                    agentPipeline={agentPipeline}
-                    projectId={currentProject.id}
-                  />
-                )}
-              </motion.div>
-            </AnimatePresence>
+                {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+              </button>
+            </div>
+            <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
+              <CodeViewer
+                file={currentFile}
+                onSave={handleSaveFile}
+                hasUnsavedChanges={hasUnsavedChanges}
+              />
+            </TabsContent>
+            <TabsContent value="preview" className="flex-1 m-0 overflow-hidden">
+              <PreviewPanel files={files} projectName={currentProject.name} projectId={currentProject.id} />
+            </TabsContent>
+            <TabsContent value="validate" className="flex-1 m-0 overflow-hidden">
+              <ValidationPanel
+                results={validationResults}
+                summary={validationSummary}
+                onValidate={handleValidate}
+                validating={validating}
+              />
+            </TabsContent>
+            <TabsContent value="history" className="flex-1 m-0 overflow-hidden">
+              <VersionHistoryPanel
+                versions={versions}
+                loading={loadingVersions}
+                creating={creatingVersion}
+                onCreateVersion={handleCreateVersion}
+                onRefresh={loadVersions}
+                expandedVersions={expandedVersions}
+                onToggleExpand={toggleVersionExpand}
+              />
+            </TabsContent>
+            <TabsContent value="memory" className="flex-1 m-0 overflow-hidden">
+              <ProjectMemoryPanel projectId={currentProject.id} />
+            </TabsContent>
+            <TabsContent value="analytics" className="flex-1 m-0 overflow-hidden">
+              <ProjectAnalytics
+                files={files}
+                conversations={conversations}
+                messages={messages}
+                agentPipeline={agentPipeline}
+                projectId={currentProject.id}
+              />
+            </TabsContent>
+            <TabsContent value="status" className="flex-1 m-0 overflow-hidden">
+              <AgentStatusPanel
+                agentPipeline={agentPipeline.map(a => ({ role: a.agent, status: a.status, content: a.message }))}
+                isProcessing={isProcessing}
+              />
+            </TabsContent>
             </Tabs>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
 
       {/* Desktop Status Bar - theming based on project status */}
-      <footer className={`border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 ${
-        currentProject.status === 'building' ? 'bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400' :
-        currentProject.status === 'ready' ? 'bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400' :
-        currentProject.status === 'deployed' ? 'bg-sky-50/50 dark:bg-sky-950/20 text-sky-700 dark:text-sky-400' :
-        'bg-muted/30 text-muted-foreground'
-      }`>
+      <footer className={statusBarClassName}>
         <div className="flex items-center gap-3">
           {currentFile && (
             <>
