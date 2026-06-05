@@ -711,6 +711,7 @@ export function Workspace() {
             user={user}
             projectCount={projects.length}
             fileCount={files.length}
+            messageCount={messages.filter(m => m.role === 'user').length}
             onLogout={logout}
             onShowShortcuts={() => {
               const event = new KeyboardEvent('keydown', {

@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -118,6 +119,7 @@ function AddMemoryDialog({
             <Brain className="w-4 h-4 text-emerald-600" />
             Add Memory
           </DialogTitle>
+          <DialogDescription>Add a new memory item to help AI understand your project better.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">

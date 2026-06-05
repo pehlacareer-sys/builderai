@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { BrandButton } from '@/components/ui/brand-button'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -110,6 +110,8 @@ export function OnboardingTour({ forceOpen, onComplete }: OnboardingTourProps) {
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) handleSkip() }}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-background/80 backdrop-blur-xl border-white/10">
+        <DialogTitle className="sr-only">{currentStep.title}</DialogTitle>
+        <DialogDescription className="sr-only">{currentStep.description}</DialogDescription>
         <div className="p-6 sm:p-8">
           {/* Step Content with Animation */}
           <AnimatePresence mode="wait" custom={direction}>

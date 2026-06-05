@@ -1,152 +1,621 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useProjectStore } from '@/stores/project-store'
+import { useChatStore } from '@/stores/chat-store'
 import {
   Eye, Download, FolderTree, Loader2, FileCode, FolderOpen,
   CheckCircle2, XCircle, Layers, Code2, Monitor, RefreshCw,
   ExternalLink, FileText, FileJson, FileType, AlertCircle, FileSearch,
+  Bot, Shield, Rocket, Save, ChevronDown, ChevronRight,
+  Package, Braces, Palette, Settings2, Hash, Clock,
+  Calendar, Zap, FileIcon, FileType2, GalleryVertical,
 } from 'lucide-react'
+
+// ─── Utility functions ─────────────────────────────────────────────
 
 function getFileExtension(path: string): string {
   return path.split('.').pop()?.toLowerCase() || ''
 }
 
-interface TreeNode {
-  name: string
-  children: TreeNode[]
-  isFile: boolean
-  path?: string
+function getFileName(path: string): string {
+  return path.split('/').pop() || path
 }
 
-function buildFileTree(files: Array<{ path: string }>): TreeNode {
-  const root: TreeNode = { name: '/', children: [], isFile: false }
-  for (const file of files) {
-    const parts = file.path.split('/').filter(Boolean)
-    let current = root
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]
-      const isFile = i === parts.length - 1
-      let child = current.children.find(c => c.name === part && c.isFile === isFile)
-      if (!child) {
-        child = { name: part, children: [], isFile, path: isFile ? file.path : undefined }
-        current.children.push(child)
+function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return 'N/A'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// ─── Animated Counter Hook ─────────────────────────────────────────
+
+function useAnimatedCounter(target: number, duration = 1000, delay = 300) {
+  const [count, setCount] = useState(0)
+  const hasAnimated = useRef(false)
+
+  useEffect(() => {
+    if (hasAnimated.current) return
+    hasAnimated.current = true
+
+    let startTime: number | null = null
+    const startValue = 0
+
+    const animate = (timestamp: number) => {
+      if (startTime === null) {
+        startTime = timestamp + delay
       }
-      current = child
+      if (timestamp < startTime) {
+        requestAnimationFrame(animate)
+        return
+      }
+      const elapsed = timestamp - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3) // ease-out cubic
+      setCount(Math.round(startValue + (target - startValue) * eased))
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      }
     }
-  }
-  const sortTree = (node: TreeNode) => {
-    node.children.sort((a, b) => {
-      if (a.isFile !== b.isFile) return a.isFile ? 1 : -1
-      return a.name.localeCompare(b.name)
-    })
-    node.children.forEach(sortTree)
-  }
-  sortTree(root)
-  return root
+
+    requestAnimationFrame(animate)
+  }, [target, duration, delay])
+
+  return count
 }
 
-function TreeNodeView({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
-  if (node.name === '/' && depth === 0) {
-    return (
-      <div>
-        {node.children.map((child, i) => (
-          <TreeNodeView key={`${child.name}-${i}`} node={child} depth={depth} />
-        ))}
-      </div>
-    )
+// ─── File categorization ───────────────────────────────────────────
+
+type FileCategory = 'Pages' | 'Components' | 'Styles' | 'Config' | 'Other'
+
+interface CategorizedFile {
+  path: string
+  content: string
+  lines: number
+  size: number
+  ext: string
+}
+
+function categorizeFile(path: string): FileCategory {
+  const ext = getFileExtension(path)
+  const lower = path.toLowerCase()
+
+  // Pages: app/ directory page files
+  if ((lower.includes('app/') || lower.includes('pages/')) &&
+      (ext === 'tsx' || ext === 'jsx' || ext === 'ts' || ext === 'js') &&
+      (lower.includes('page.') || lower.includes('layout.') || lower.includes('loading.') ||
+       lower.includes('error.') || lower.includes('not-found.') || lower.includes('template.'))) {
+    return 'Pages'
   }
 
-  const isTopLevel = depth === 0
+  // Components: files in components/ directory
+  if (lower.includes('components/') || lower.includes('/ui/')) {
+    return 'Components'
+  }
+
+  // Styles
+  if (ext === 'css' || ext === 'scss' || ext === 'less' || ext === 'sass' || ext === 'module.css') {
+    return 'Styles'
+  }
+
+  // Config files
+  if (
+    lower.includes('package.json') ||
+    lower.includes('tsconfig') ||
+    lower.includes('.eslintrc') ||
+    lower.includes('.prettierrc') ||
+    lower.includes('next.config') ||
+    lower.includes('tailwind.config') ||
+    lower.includes('postcss.config') ||
+    lower.includes('.env') ||
+    lower.includes('prisma/') ||
+    lower.includes('.gitignore') ||
+    lower.includes('vercel.json') ||
+    lower.includes('dockerfile') ||
+    lower.includes('docker-compose') ||
+    lower.includes('vite.config') ||
+    ext === 'prisma'
+  ) {
+    return 'Config'
+  }
+
+  return 'Other'
+}
+
+const CATEGORY_CONFIG: Record<FileCategory, { icon: React.ElementType; color: string; bgColor: string }> = {
+  Pages: { icon: FileCode, color: 'text-sky-500', bgColor: 'bg-sky-50 dark:bg-sky-950/30' },
+  Components: { icon: Braces, color: 'text-violet-500', bgColor: 'bg-violet-50 dark:bg-violet-950/30' },
+  Styles: { icon: Palette, color: 'text-pink-500', bgColor: 'bg-pink-50 dark:bg-pink-950/30' },
+  Config: { icon: Settings2, color: 'text-amber-500', bgColor: 'bg-amber-50 dark:bg-amber-950/30' },
+  Other: { icon: FileIcon, color: 'text-gray-500', bgColor: 'bg-gray-50 dark:bg-gray-950/30' },
+}
+
+// ─── Sub-components ────────────────────────────────────────────────
+
+function FileTypeBar({ files }: { files: Array<{ path: string; content: string }> }) {
+  if (files.length === 0) return null
+
+  // Compute proportions
+  const counts: Record<string, number> = {}
+  for (const f of files) {
+    const ext = getFileExtension(f.path).toUpperCase() || 'OTHER'
+    counts[ext] = (counts[ext] || 0) + 1
+  }
+
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+  const total = files.length
+
+  const barColors: Record<string, string> = {
+    TSX: 'bg-sky-500',
+    TS: 'bg-sky-400',
+    JSX: 'bg-amber-500',
+    JS: 'bg-amber-400',
+    CSS: 'bg-purple-500',
+    JSON: 'bg-yellow-500',
+    MD: 'bg-gray-400',
+    HTML: 'bg-orange-500',
+    ENV: 'bg-emerald-500',
+    PRISMA: 'bg-teal-500',
+    OTHER: 'bg-gray-300 dark:bg-gray-600',
+  }
 
   return (
-    <div>
-      <div
-        className={`flex items-center gap-1.5 py-0.5 px-1 rounded text-xs font-mono hover:bg-muted/50 ${
-          isTopLevel ? 'font-medium' : ''
-        }`}
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
-      >
-        {node.isFile ? (
-          <FileCode className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-        ) : (
-          <FolderOpen className="w-3 h-3 text-amber-500 flex-shrink-0" />
-        )}
-        <span className="truncate">{node.name}</span>
+    <div className="space-y-2">
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+        {sorted.map(([ext, count]) => (
+          <motion.div
+            key={ext}
+            initial={{ width: 0 }}
+            animate={{ width: `${(count / total) * 100}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+            className={`${barColors[ext] || 'bg-gray-400'} first:rounded-l-full last:rounded-r-full min-w-[3px]`}
+            title={`${ext}: ${count} file${count > 1 ? 's' : ''}`}
+          />
+        ))}
       </div>
-      {node.children.map((child, i) => (
-        <TreeNodeView key={`${child.name}-${i}`} node={child} depth={depth + 1} />
-      ))}
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {sorted.map(([ext, count]) => (
+          <div key={ext} className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${barColors[ext] || 'bg-gray-400'}`} />
+            <span className="text-[10px] text-muted-foreground">{ext}</span>
+            <span className="text-[10px] text-muted-foreground/60">{count}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-export function PreviewPanel({ files, projectName, projectId }: { files: Array<{ path: string; content: string }>; projectName: string; projectId?: string }) {
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'preview'>('overview')
-  const [exporting, setExporting] = useState(false)
-  const [previewKey, setPreviewKey] = useState(0)
-  const [buildingPreview, setBuildingPreview] = useState(false)
-
-  // Compute type counts
-  const typeCounts: Record<string, number> = {}
-  let totalSize = 0
-  let totalLines = 0
-  for (const file of files) {
-    const ext = getFileExtension(file.path).toUpperCase() || 'OTHER'
-    typeCounts[ext] = (typeCounts[ext] || 0) + 1
-    totalSize += new Blob([file.content]).size
-    totalLines += file.content.split('\n').length
-  }
-  const languageCount = Object.keys(typeCounts).length
-
-  // Health check
+function HealthScoreWidget({ files }: { files: Array<{ path: string }> }) {
+  // Health checks with updated scoring
   const hasPackageJson = files.some(f => f.path.includes('package.json'))
   const hasTsConfig = files.some(f => f.path.includes('tsconfig'))
-  const hasAppDir = files.some(f => f.path.includes('app/'))
   const hasReadme = files.some(f => f.path.toLowerCase().includes('readme'))
-  const hasEnv = files.some(f => f.path.includes('.env'))
+  const hasAppDir = files.some(f => f.path.includes('app/'))
+  const fileCountGt5 = files.length > 5
+  const hasConfigFiles = files.some(f =>
+    f.path.includes('.env') || f.path.includes('next.config') ||
+    f.path.includes('tailwind.config') || f.path.includes('postcss.config')
+  )
+
   const healthChecks = [
-    { label: 'package.json', ok: hasPackageJson, points: 25 },
-    { label: 'tsconfig', ok: hasTsConfig, points: 20 },
-    { label: 'app/ dir', ok: hasAppDir, points: 25 },
+    { label: 'package.json', ok: hasPackageJson, points: 20 },
+    { label: 'tsconfig', ok: hasTsConfig, points: 15 },
     { label: 'README', ok: hasReadme, points: 15 },
-    { label: '.env', ok: hasEnv, points: 15 },
+    { label: 'app/ directory', ok: hasAppDir, points: 20 },
+    { label: '5+ files', ok: fileCountGt5, points: 15 },
+    { label: 'Config files', ok: hasConfigFiles, points: 15 },
   ]
+
   const healthScore = healthChecks.reduce((sum, c) => sum + (c.ok ? c.points : 0), 0)
-  const healthLabel = healthScore >= 80 ? 'Excellent' : healthScore >= 60 ? 'Good' : healthScore >= 40 ? 'Fair' : 'Needs Work'
-  const healthColorClass = healthScore >= 80 ? 'text-emerald-500' : healthScore >= 60 ? 'text-teal-500' : healthScore >= 40 ? 'text-amber-500' : 'text-red-500'
-  const healthRingColor = healthScore >= 80 ? '#10b981' : healthScore >= 60 ? '#14b8a6' : healthScore >= 40 ? '#f59e0b' : '#ef4444'
+  const animatedScore = useAnimatedCounter(healthScore, 1200, 400)
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  const healthColorClass =
+    healthScore >= 71 ? 'text-emerald-500' :
+    healthScore >= 41 ? 'text-amber-500' :
+    'text-red-500'
+
+  const healthRingColor =
+    healthScore >= 71 ? '#10b981' :
+    healthScore >= 41 ? '#f59e0b' :
+    '#ef4444'
+
+  const healthLabel =
+    healthScore >= 71 ? 'Excellent' :
+    healthScore >= 41 ? 'Fair' :
+    'Needs Work'
+
+  const healthLabelBg =
+    healthScore >= 71 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+    healthScore >= 41 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
+    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+
+  const circleRadius = 38
+  const circleCircumference = 2 * Math.PI * circleRadius
+  const healthOffset = circleCircumference - (healthScore / 100) * circleCircumference
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+      className="rounded-xl border bg-card p-4"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Shield className="w-4 h-4 text-emerald-500" />
+        <span className="text-xs font-semibold text-foreground">Health Score</span>
+        <Badge className={`text-[9px] px-1.5 ml-auto ${healthLabelBg}`}>{healthLabel}</Badge>
+      </div>
+      <div className="flex items-center gap-4">
+        {/* Circular Progress */}
+        <div className="relative flex-shrink-0">
+          <svg width="90" height="90" viewBox="0 0 90 90" className="-rotate-90">
+            <circle
+              cx="45"
+              cy="45"
+              r={circleRadius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="6"
+              className="text-muted/20"
+            />
+            <motion.circle
+              cx="45"
+              cy="45"
+              r={circleRadius}
+              fill="none"
+              stroke={healthRingColor}
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeDasharray={circleCircumference}
+              initial={{ strokeDashoffset: circleCircumference }}
+              animate={{ strokeDashoffset: healthOffset }}
+              transition={{ duration: 1.2, ease: 'easeOut', delay: 0.4 }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <span className={`text-2xl font-bold ${healthColorClass}`}>{animatedScore}</span>
+              <span className="text-[9px] text-muted-foreground block -mt-0.5">/100</span>
+            </div>
+          </div>
+        </div>
+        {/* Breakdown */}
+        <div className="flex-1 min-w-0 space-y-1.5">
+          {healthChecks.map(check => (
+            <div key={check.label} className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                {check.ok ? (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                ) : (
+                  <XCircle className="w-3 h-3 text-red-400" />
+                )}
+                <span className="text-[11px] text-muted-foreground">{check.label}</span>
+              </div>
+              <span className={`text-[10px] font-medium ${check.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-400'}`}>
+                {check.ok ? `+${check.points}` : '0'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function FileBrowserSection({ files, onSelectFile }: { files: Array<{ id: string; path: string; content: string }>; onSelectFile: (id: string) => void }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<FileCategory>>(new Set(['Pages', 'Components', 'Config']))
+
+  const toggleGroup = (cat: FileCategory) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
   }
 
-  const handleDownload = () => {
-    const lines = [`# ${projectName} - Project File Listing`, '']
-    for (const file of files) {
-      lines.push(`## ${file.path}`)
-      lines.push('```')
-      lines.push(file.content)
-      lines.push('```')
-      lines.push('')
+  // Categorize files
+  const grouped: Record<FileCategory, CategorizedFile[]> = {
+    Pages: [], Components: [], Styles: [], Config: [], Other: [],
+  }
+
+  for (const file of files) {
+    const cat = categorizeFile(file.path)
+    const lines = file.content.split('\n').length
+    const size = new Blob([file.content]).size
+    grouped[cat].push({
+      path: file.path,
+      content: file.content,
+      lines,
+      size,
+      ext: getFileExtension(file.path),
+    })
+  }
+
+  const categories: FileCategory[] = ['Pages', 'Components', 'Styles', 'Config', 'Other']
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+      className="rounded-xl border bg-card"
+    >
+      <div className="flex items-center gap-2 p-4 pb-2">
+        <FolderOpen className="w-4 h-4 text-amber-500" />
+        <span className="text-xs font-semibold text-foreground">File Browser</span>
+        <Badge variant="secondary" className="text-[9px] px-1.5 ml-auto">{files.length} files</Badge>
+      </div>
+
+      <div className="px-2 pb-2 space-y-0.5">
+        {categories.map(cat => {
+          const catFiles = grouped[cat]
+          if (catFiles.length === 0) return null
+          const config = CATEGORY_CONFIG[cat]
+          const Icon = config.icon
+          const isExpanded = expandedGroups.has(cat)
+
+          return (
+            <div key={cat}>
+              <button
+                onClick={() => toggleGroup(cat)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                )}
+                <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                <span className="text-xs font-medium text-foreground">{cat}</span>
+                <Badge variant="secondary" className="text-[9px] px-1 ml-auto">{catFiles.length}</Badge>
+              </button>
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pl-6 space-y-0.5 max-h-48 overflow-y-auto custom-scrollbar">
+                      {catFiles.map(file => (
+                        <button
+                          key={file.path}
+                          onClick={() => {
+                            const found = files.find(f => f.path === file.path)
+                            if (found) onSelectFile(found.id)
+                          }}
+                          className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left group"
+                        >
+                          <FileCode className="w-3 h-3 text-muted-foreground group-hover:text-emerald-500 transition-colors flex-shrink-0" />
+                          <span className="text-[11px] font-mono truncate text-muted-foreground group-hover:text-foreground transition-colors">
+                            {getFileName(file.path)}
+                          </span>
+                          <span className="text-[9px] text-muted-foreground/50 ml-auto flex-shrink-0">
+                            {file.lines}L
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        })}
+      </div>
+    </motion.div>
+  )
+}
+
+function QuickActionsBar({
+  projectId,
+  onValidate,
+  onExportZip,
+  onSaveVersion,
+  exporting,
+  creatingVersion,
+  validating,
+}: {
+  projectId?: string
+  onValidate: () => void
+  onExportZip: () => void
+  onSaveVersion: () => void
+  exporting: boolean
+  creatingVersion: boolean
+  validating: boolean
+}) {
+  const actions = [
+    {
+      icon: Shield,
+      label: 'Validate',
+      subtitle: 'Run checks',
+      onClick: onValidate,
+      loading: validating,
+      disabled: validating,
+      gradient: 'from-emerald-500 to-teal-500',
+    },
+    {
+      icon: Download,
+      label: 'Export ZIP',
+      subtitle: 'Download',
+      onClick: onExportZip,
+      loading: exporting,
+      disabled: !projectId || exporting,
+      gradient: 'from-teal-500 to-cyan-500',
+    },
+    {
+      icon: Save,
+      label: 'Save Version',
+      subtitle: 'Snapshot',
+      onClick: onSaveVersion,
+      loading: creatingVersion,
+      disabled: !projectId || creatingVersion,
+      gradient: 'from-cyan-500 to-sky-500',
+    },
+    {
+      icon: Rocket,
+      label: 'Deploy',
+      subtitle: 'Coming soon',
+      onClick: () => toast.info('Deployment coming soon!'),
+      loading: false,
+      disabled: false,
+      gradient: 'from-sky-500 to-emerald-500',
+    },
+  ]
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.25 }}
+      className="rounded-xl border bg-card p-4"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Zap className="w-4 h-4 text-emerald-500" />
+        <span className="text-xs font-semibold text-foreground">Quick Actions</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {actions.map((action, i) => {
+          const Icon = action.icon
+          return (
+            <motion.button
+              key={action.label}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 + i * 0.05 }}
+              onClick={action.onClick}
+              disabled={action.disabled}
+              className="group relative rounded-lg border p-3 text-left hover:border-emerald-300 dark:hover:border-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+            >
+              {/* Gradient accent line at top */}
+              <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${action.gradient} opacity-60 group-hover:opacity-100 transition-opacity`} />
+              <div className="flex items-start gap-2">
+                {action.loading ? (
+                  <Loader2 className="w-4 h-4 text-emerald-500 animate-spin flex-shrink-0" />
+                ) : (
+                  <Icon className="w-4 h-4 text-emerald-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                )}
+                <div>
+                  <div className="text-[11px] font-semibold text-foreground">{action.label}</div>
+                  <div className="text-[9px] text-muted-foreground">{action.subtitle}</div>
+                </div>
+              </div>
+            </motion.button>
+          )
+        })}
+      </div>
+    </motion.div>
+  )
+}
+
+function LivePreviewPlaceholder() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.3 }}
+      className="rounded-xl border bg-card p-4"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Monitor className="w-4 h-4 text-emerald-500" />
+        <span className="text-xs font-semibold text-foreground">Live Preview</span>
+      </div>
+      {/* Animated gradient border placeholder */}
+      <div className="relative rounded-lg overflow-hidden">
+        {/* Animated gradient border */}
+        <div className="absolute inset-0 rounded-lg p-[2px] animate-gradient-border" style={{
+          background: 'linear-gradient(var(--gradient-angle, 0deg), #10b981, #14b8a6, #06b6d4, #10b981)',
+        }}>
+          <div className="w-full h-full rounded-lg bg-card" />
+        </div>
+        <div className="relative rounded-lg bg-muted/30 p-8 flex flex-col items-center justify-center min-h-[180px]">
+          <motion.div
+            animate={{ y: [0, -6, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-4 mx-auto shadow-lg shadow-emerald-500/20">
+              <Bot className="w-7 h-7 text-white" />
+            </div>
+          </motion.div>
+          <p className="text-sm font-medium text-foreground mb-1">Live Preview Coming Soon</p>
+          <p className="text-[11px] text-muted-foreground text-center max-w-[200px]">
+            AI preview will render your app here with real-time updates
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Main Preview Panel ────────────────────────────────────────────
+
+export function PreviewPanel({
+  files,
+  projectName,
+  projectId,
+}: {
+  files: Array<{ id?: string; path: string; content: string }>
+  projectName: string
+  projectId?: string
+}) {
+  const { currentProject, selectFile } = useProjectStore()
+  const { conversations } = useChatStore()
+
+  const [exporting, setExporting] = useState(false)
+  const [creatingVersion, setCreatingVersion] = useState(false)
+  const [validating, setValidating] = useState(false)
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [descriptionValue, setDescriptionValue] = useState(currentProject?.description || '')
+  const [descriptionSaving, setDescriptionSaving] = useState(false)
+
+  // Sync description from project
+  useEffect(() => {
+    if (currentProject?.description !== undefined) {
+      setDescriptionValue(currentProject.description || '')
     }
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${projectName.replace(/\s+/g, '-').toLowerCase()}-files.md`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success('Project files downloaded')
+  }, [currentProject?.description])
+
+  // Compute stats
+  let totalLines = 0
+  let totalSize = 0
+  for (const file of files) {
+    totalLines += file.content.split('\n').length
+    totalSize += new Blob([file.content]).size
   }
 
+  const conversationsCount = conversations.length
+
+  // Animated counters
+  const animatedFileCount = useAnimatedCounter(files.length, 800, 100)
+  const animatedLineCount = useAnimatedCounter(totalLines, 1000, 200)
+  const animatedConvCount = useAnimatedCounter(conversationsCount, 800, 300)
+
+  // Handlers
   const handleExportZip = async () => {
     if (!projectId) return
     setExporting(true)
@@ -160,515 +629,240 @@ export function PreviewPanel({ files, projectName, projectId }: { files: Array<{
     }
   }
 
-  // Build HTML preview from project files
-  const buildPreviewHtml = useCallback(() => {
-    const pageFile = files.find(f => f.path === 'src/app/page.tsx' || f.path === 'src/app/page.jsx' || f.path === 'app/page.tsx' || f.path === 'app/page.jsx')
-    const cssFile = files.find(f => f.path === 'src/app/globals.css' || f.path === 'app/globals.css')
-    const layoutFile = files.find(f => f.path === 'src/app/layout.tsx' || f.path === 'src/app/layout.jsx' || f.path === 'app/layout.tsx' || f.path === 'app/layout.jsx')
-
-    if (!pageFile && !layoutFile) return null
-
-    // Try to extract the JSX return content from page.tsx
-    let htmlContent = ''
-    if (pageFile) {
-      const pageContent = pageFile.content
-      // Try to extract the return block
-      const returnMatch = pageContent.match(/return\s*\(\s*([\s\S]*?)\s*\)\s*\}/)
-      htmlContent = returnMatch ? returnMatch[1] : pageContent
-      // Convert JSX to HTML (simplified)
-      htmlContent = htmlContent
-        .replace(/className=/g, 'class=')
-        .replace(/{\/\*[\s\S]*?\*\/}/g, '') // Remove JSX comments
-        .replace(/\{`([^`]*)`\}/g, '$1') // Template literals
-        .replace(/\{["']([^"']*)["']\}/g, '$1') // String expressions
-        .replace(/\{[^}]*\}/g, '') // Remove remaining JSX expressions
+  const handleSaveVersion = async () => {
+    if (!projectId) return
+    setCreatingVersion(true)
+    try {
+      await api.createVersion(projectId, `Version ${Date.now()}`)
+      toast.success('Version snapshot saved')
+    } catch {
+      toast.error('Failed to save version')
+    } finally {
+      setCreatingVersion(false)
     }
+  }
 
-    // Get CSS content
-    const cssContent = cssFile?.content || ''
-
-    // Try to extract body content from layout if available
-    let layoutBody = ''
-    if (layoutFile) {
-      const layoutContent = layoutFile.content
-      const bodyMatch = layoutContent.match(/<body[^>]*>([\s\S]*?)<\/body>/)
-      if (bodyMatch) {
-        layoutBody = bodyMatch[1]
-          .replace(/{\/\*[\s\S]*?\*\/}/g, '')
-          .replace(/\{[^}]*\}/g, '')
-      }
+  const handleValidate = async () => {
+    if (!projectId) return
+    setValidating(true)
+    try {
+      await api.validateProject(projectId)
+      toast.success('Validation complete')
+    } catch {
+      toast.error('Validation failed')
+    } finally {
+      setValidating(false)
     }
+  }
 
-    // Build the preview HTML document
-    const previewHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview - ${projectName}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: #ffffff;
-      color: #111827;
-      line-height: 1.5;
+  const handleSaveDescription = async () => {
+    if (!projectId) return
+    setDescriptionSaving(true)
+    try {
+      await api.updateProject(projectId, { description: descriptionValue })
+      toast.success('Description updated')
+      setEditingDescription(false)
+    } catch {
+      toast.error('Failed to update description')
+    } finally {
+      setDescriptionSaving(false)
     }
-    ${cssContent}
-  </style>
-</head>
-<body>
-  ${layoutBody}
-  <div id="root">
-    ${htmlContent}
-  </div>
-</body>
-</html>`
-
-    return previewHtml
-  }, [files, projectName])
-
-  // Handle refresh
-  const handleRefreshPreview = () => {
-    setBuildingPreview(true)
-    setTimeout(() => {
-      setPreviewKey(prev => prev + 1)
-      setBuildingPreview(false)
-    }, 300)
   }
 
-  // Handle open in new tab
-  const handleOpenInNewTab = () => {
-    const html = buildPreviewHtml()
-    if (!html) return
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  const handleSelectFile = (fileId: string) => {
+    selectFile(fileId)
   }
 
-  const fileTree = buildFileTree(files)
+  // Framework info
+  const framework = currentProject?.framework || 'next.js'
+  const frameworkBadge = framework.toLowerCase().includes('next') ? 'Next.js' : framework
 
-  // Type chip colors
-  const typeChipColors: Record<string, string> = {
-    TSX: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
-    TS: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
-    JSX: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    JS: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    CSS: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-    JSON: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-    MD: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300',
-    HTML: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-    ENV: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-    PRISMA: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
-  }
-
-  const typeIconMap: Record<string, React.ReactNode> = {
-    TSX: <FileType className="w-3 h-3" />,
-    TS: <FileType className="w-3 h-3" />,
-    JSX: <FileType className="w-3 h-3" />,
-    JS: <FileType className="w-3 h-3" />,
-    CSS: <FileText className="w-3 h-3" />,
-    JSON: <FileJson className="w-3 h-3" />,
-    MD: <FileText className="w-3 h-3" />,
-  }
-
-  // SVG circle parameters for health score
-  const circleRadius = 36
-  const circleCircumference = 2 * Math.PI * circleRadius
-  const healthOffset = circleCircumference - (healthScore / 100) * circleCircumference
-
-  const previewHtml = buildPreviewHtml()
+  // Ensure files have IDs for the store
+  const filesWithIds = files.map(f => ({
+    ...f,
+    id: (f as any).id || f.path,
+  }))
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header with sub-tabs */}
-      <div className="border-b bg-muted/30">
-        <div className="px-3 sm:px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-emerald-500" />
-            <span className="text-xs font-medium text-muted-foreground">Preview</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-[10px] min-h-[44px] md:min-h-0"
-              onClick={handleDownload}
-              disabled={files.length === 0}
-            >
-              <Download className="w-3 h-3 mr-1" />
-              Markdown
-            </Button>
-            {projectId && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] min-h-[44px] md:min-h-0 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                onClick={handleExportZip}
-                disabled={files.length === 0 || exporting}
-              >
-                {exporting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <FolderTree className="w-3 h-3 mr-1" />}
-                Export ZIP
-              </Button>
-            )}
-          </div>
-        </div>
-        {/* Sub-tabs */}
-        <div className="px-3 sm:px-4 flex items-center gap-1 pb-1">
-          <button
-            onClick={() => setActiveSubTab('overview')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all min-h-[32px] ${
-              activeSubTab === 'overview'
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveSubTab('preview')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all min-h-[32px] ${
-              activeSubTab === 'preview'
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            Live Preview
-          </button>
+      {/* Header */}
+      <div className="border-b bg-muted/30 px-3 sm:px-4 py-2 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Eye className="w-4 h-4 text-emerald-500" />
+          <span className="text-xs font-medium text-muted-foreground">Preview</span>
         </div>
       </div>
 
-      {/* Tab content */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {activeSubTab === 'overview' ? (
+        {files.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
             <motion.div
-              key="overview"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              transition={{ duration: 0.15 }}
-              className="h-full"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center"
             >
-              {files.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-center"
-                  >
-                    <motion.div
-                      animate={{ y: [0, -8, 0] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                    >
-                      <Eye className="w-12 h-12 text-emerald-300 dark:text-emerald-700 mx-auto mb-3" />
-                    </motion.div>
-                    <h3 className="text-sm font-medium text-muted-foreground">No preview available</h3>
-                    <p className="text-xs text-muted-foreground/70 mt-1">Generate code with AI to see a preview</p>
-                  </motion.div>
-                </div>
-              ) : (
-                <ScrollArea className="h-full">
-                  <div className="p-3 sm:p-4 space-y-3">
-                    {/* Quick Stats Row */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0 }}
-                        className="rounded-lg border bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-3 text-center"
-                      >
-                        <FileCode className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
-                        <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{files.length}</div>
-                        <div className="text-[10px] text-muted-foreground">Total Files</div>
-                      </motion.div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.05 }}
-                        className="rounded-lg border bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 p-3 text-center"
-                      >
-                        <Layers className="w-4 h-4 text-teal-500 mx-auto mb-1" />
-                        <div className="text-lg font-bold text-teal-700 dark:text-teal-300">{formatSize(totalSize)}</div>
-                        <div className="text-[10px] text-muted-foreground">Total Size</div>
-                      </motion.div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="rounded-lg border bg-gradient-to-br from-cyan-50 to-sky-50 dark:from-cyan-950/20 dark:to-sky-950/20 p-3 text-center"
-                      >
-                        <Code2 className="w-4 h-4 text-cyan-500 mx-auto mb-1" />
-                        <div className="text-lg font-bold text-cyan-700 dark:text-cyan-300">{languageCount}</div>
-                        <div className="text-[10px] text-muted-foreground">Languages</div>
-                      </motion.div>
+              <motion.div
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Eye className="w-12 h-12 text-emerald-300 dark:text-emerald-700 mx-auto mb-3" />
+              </motion.div>
+              <h3 className="text-sm font-medium text-muted-foreground">No preview available</h3>
+              <p className="text-xs text-muted-foreground/70 mt-1">Generate code with AI to see a preview</p>
+            </motion.div>
+          </div>
+        ) : (
+          <ScrollArea className="h-full">
+            <div className="p-3 sm:p-4 space-y-3">
+
+              {/* ─── 1. Project Overview Dashboard ─── */}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0 }}
+                className="rounded-xl border bg-card p-4"
+              >
+                {/* Project Name + Status */}
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-emerald-500/20">
+                    <Zap className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-sm font-bold text-foreground truncate">{projectName}</h2>
+                      <Badge className={`text-[9px] px-1.5 ${
+                        currentProject?.status === 'ready' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                        currentProject?.status === 'building' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
+                        currentProject?.status === 'deployed' ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {currentProject?.status || 'draft'}
+                      </Badge>
+                      <Badge variant="outline" className="text-[9px] px-1.5 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
+                        <Package className="w-2.5 h-2.5 mr-0.5" />
+                        {frameworkBadge}
+                      </Badge>
                     </div>
 
-                    {/* Health Score with Circular Progress */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.15 }}
-                      className="rounded-lg border p-4"
-                    >
-                      <div className="flex items-center gap-4">
-                        {/* Circular Progress */}
-                        <div className="relative flex-shrink-0">
-                          <svg width="88" height="88" viewBox="0 0 88 88" className="-rotate-90">
-                            <circle
-                              cx="44"
-                              cy="44"
-                              r={circleRadius}
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="6"
-                              className="text-muted/30"
-                            />
-                            <motion.circle
-                              cx="44"
-                              cy="44"
-                              r={circleRadius}
-                              fill="none"
-                              stroke={healthRingColor}
-                              strokeWidth="6"
-                              strokeLinecap="round"
-                              strokeDasharray={circleCircumference}
-                              initial={{ strokeDashoffset: circleCircumference }}
-                              animate={{ strokeDashoffset: healthOffset }}
-                              transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
-                            />
-                          </svg>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="text-center">
-                              <span className={`text-xl font-bold ${healthColorClass}`}>{healthScore}</span>
-                              <span className="text-[9px] text-muted-foreground block">/100</span>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Health Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-foreground">Project Health</span>
-                            <span className={`text-xs font-semibold ${healthColorClass}`}>{healthLabel}</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {healthChecks.map(check => (
-                              <div key={check.label} className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  {check.ok ? (
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                  ) : (
-                                    <XCircle className="w-3 h-3 text-red-400" />
-                                  )}
-                                  <span className="text-[11px] text-muted-foreground">{check.label}</span>
-                                </div>
-                                <span className={`text-[10px] font-medium ${check.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-400'}`}>
-                                  {check.ok ? `+${check.points}` : '0'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                    {/* Editable description */}
+                    {editingDescription ? (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <input
+                          value={descriptionValue}
+                          onChange={e => setDescriptionValue(e.target.value)}
+                          className="flex-1 text-[11px] text-muted-foreground bg-muted/50 rounded px-2 py-1 border border-emerald-200 dark:border-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 min-h-[32px]"
+                          placeholder="Add a description..."
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveDescription()
+                            if (e.key === 'Escape') {
+                              setEditingDescription(false)
+                              setDescriptionValue(currentProject?.description || '')
+                            }
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={handleSaveDescription}
+                          disabled={descriptionSaving}
+                        >
+                          {descriptionSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            setEditingDescription(false)
+                            setDescriptionValue(currentProject?.description || '')
+                          }}
+                        >
+                          <XCircle className="w-3 h-3 text-muted-foreground" />
+                        </Button>
                       </div>
-                    </motion.div>
-
-                    {/* File Type Distribution as Chips */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="rounded-lg border p-3"
-                    >
-                      <div className="flex items-center gap-2 mb-3">
-                        <FolderTree className="w-3.5 h-3.5 text-emerald-500" />
-                        <span className="text-xs font-semibold text-foreground">File Types</span>
-                        <Badge variant="secondary" className="text-[9px] px-1.5 ml-auto">{languageCount} types</Badge>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(typeCounts)
-                          .sort((a, b) => b[1] - a[1])
-                          .map(([ext, count]) => (
-                            <motion.div
-                              key={ext}
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ duration: 0.2 }}
-                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium ${typeChipColors[ext] || 'bg-muted text-muted-foreground'}`}
-                            >
-                              {typeIconMap[ext] || <FileCode className="w-3 h-3" />}
-                              <span>{ext}</span>
-                              <span className="opacity-60">×{count}</span>
-                            </motion.div>
-                          ))}
-                      </div>
-                    </motion.div>
-
-                    {/* File Structure Tree */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25 }}
-                      className="rounded-lg border p-3"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
-                        <span className="text-xs font-semibold text-foreground">File Structure</span>
-                        <Badge variant="secondary" className="text-[9px] px-1.5 ml-auto">{totalLines.toLocaleString()} lines</Badge>
-                      </div>
-                      <div className="bg-muted/30 rounded-md p-2 max-h-64 overflow-y-auto">
-                        <TreeNodeView node={fileTree} />
-                      </div>
-                    </motion.div>
-
-                    {/* Export Actions as Prominent Cards */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 }}
-                      className="grid grid-cols-2 gap-2"
-                    >
-                      <button
-                        onClick={handleDownload}
-                        disabled={files.length === 0}
-                        className="group rounded-lg border p-3 text-left hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Download className="w-5 h-5 text-emerald-500 mb-1.5 group-hover:scale-110 transition-transform" />
-                        <div className="text-xs font-semibold text-foreground">Download MD</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">All files as Markdown</div>
-                      </button>
-                      <button
-                        onClick={handleExportZip}
-                        disabled={files.length === 0 || exporting || !projectId}
-                        className="group rounded-lg border p-3 text-left hover:border-teal-300 dark:hover:border-teal-700 hover:bg-teal-50/50 dark:hover:bg-teal-950/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {exporting ? (
-                          <Loader2 className="w-5 h-5 text-teal-500 mb-1.5 animate-spin" />
-                        ) : (
-                          <FolderTree className="w-5 h-5 text-teal-500 mb-1.5 group-hover:scale-110 transition-transform" />
-                        )}
-                        <div className="text-xs font-semibold text-foreground">Export ZIP</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">Download as archive</div>
-                      </button>
-                    </motion.div>
-                  </div>
-                </ScrollArea>
-              )}
-            </motion.div>
-          ) : (
-            <motion.div
-              key="live-preview"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.15 }}
-              className="h-full flex flex-col"
-            >
-              {/* Live Preview Controls */}
-              <div className="border-b px-3 py-1.5 flex items-center justify-between bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-medium">Preview</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[10px] min-h-[32px] md:min-h-0 px-2"
-                    onClick={handleRefreshPreview}
-                    disabled={buildingPreview}
-                  >
-                    {buildingPreview ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <button
+                        onClick={() => setEditingDescription(true)}
+                        className="mt-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors text-left cursor-pointer min-h-[20px]"
+                        title="Click to edit description"
+                      >
+                        {currentProject?.description || 'Add a description...'}
+                      </button>
                     )}
-                    Refresh
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[10px] min-h-[32px] md:min-h-0 px-2"
-                    onClick={handleOpenInNewTab}
-                    disabled={!previewHtml}
-                  >
-                    <ExternalLink className="w-3 h-3 mr-1" />
-                    New Tab
-                  </Button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Preview Content */}
-              {files.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-center"
-                  >
-                    <motion.div
-                      animate={{ y: [0, -8, 0] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                    >
-                      <Monitor className="w-16 h-16 text-emerald-300 dark:text-emerald-700 mx-auto mb-4" />
-                    </motion.div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Nothing to preview yet</h3>
-                    <p className="text-xs text-muted-foreground/70 mt-1">Generate code with AI to see a live preview</p>
-                  </motion.div>
-                </div>
-              ) : !previewHtml ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-center max-w-xs"
-                  >
-                    <FileSearch className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-                    <h3 className="text-sm font-medium text-muted-foreground">No page file found</h3>
-                    <p className="text-xs text-muted-foreground/70 mt-1">
-                      A <code className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono">src/app/page.tsx</code> file is required for the live preview.
-                    </p>
-                  </motion.div>
-                </div>
-              ) : (
-                <div className="flex-1 relative">
-                  {buildingPreview && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                      <div className="text-center">
-                        <Loader2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 animate-spin" />
-                        <p className="text-xs text-muted-foreground">Building preview...</p>
-                      </div>
+                {/* Timestamps */}
+                <div className="flex items-center gap-4 mt-2 mb-3">
+                  {currentProject?.createdAt && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      <span>Created {formatRelativeTime(currentProject.createdAt)}</span>
                     </div>
                   )}
-                  <iframe
-                    key={previewKey}
-                    srcDoc={previewHtml}
-                    sandbox="allow-scripts"
-                    className="w-full h-full border-0"
-                    title="Live Preview"
-                  />
+                  {currentProject?.updatedAt && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      <span>Updated {formatRelativeTime(currentProject.updatedAt)}</span>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Disclaimer */}
-              <div className="border-t px-3 py-1.5 bg-amber-50/50 dark:bg-amber-950/10">
-                <div className="flex items-start gap-1.5">
-                  <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400/80 leading-tight">
-                    This is a simplified preview. Full functionality requires running the Next.js dev server.
-                  </p>
+                {/* Quick Stats */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border p-2.5 text-center">
+                    <FileCode className="w-3.5 h-3.5 text-emerald-500 mx-auto mb-1" />
+                    <div className="text-base font-bold text-emerald-700 dark:text-emerald-300">{animatedFileCount}</div>
+                    <div className="text-[9px] text-muted-foreground">Files</div>
+                  </div>
+                  <div className="rounded-lg bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 border p-2.5 text-center">
+                    <Hash className="w-3.5 h-3.5 text-teal-500 mx-auto mb-1" />
+                    <div className="text-base font-bold text-teal-700 dark:text-teal-300">{animatedLineCount.toLocaleString()}</div>
+                    <div className="text-[9px] text-muted-foreground">Lines</div>
+                  </div>
+                  <div className="rounded-lg bg-gradient-to-br from-cyan-50 to-sky-50 dark:from-cyan-950/20 dark:to-sky-950/20 border p-2.5 text-center">
+                    <Layers className="w-3.5 h-3.5 text-cyan-500 mx-auto mb-1" />
+                    <div className="text-base font-bold text-cyan-700 dark:text-cyan-300">{animatedConvCount}</div>
+                    <div className="text-[9px] text-muted-foreground">Chats</div>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
+                {/* File Type Distribution Bar */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <GalleryVertical className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-[11px] font-semibold text-foreground">File Distribution</span>
+                  </div>
+                  <FileTypeBar files={files} />
+                </div>
+              </motion.div>
+
+              {/* ─── 2. Health Score Widget ─── */}
+              <HealthScoreWidget files={files} />
+
+              {/* ─── 3. File Browser Section ─── */}
+              <FileBrowserSection files={filesWithIds} onSelectFile={handleSelectFile} />
+
+              {/* ─── 4. Quick Actions Bar ─── */}
+              <QuickActionsBar
+                projectId={projectId}
+                onValidate={handleValidate}
+                onExportZip={handleExportZip}
+                onSaveVersion={handleSaveVersion}
+                exporting={exporting}
+                creatingVersion={creatingVersion}
+                validating={validating}
+              />
+
+              {/* ─── 5. Live Preview Placeholder ─── */}
+              <LivePreviewPlaceholder />
+
+            </div>
+          </ScrollArea>
+        )}
       </div>
     </div>
   )

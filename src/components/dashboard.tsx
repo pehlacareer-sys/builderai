@@ -21,8 +21,11 @@ import {
   Plus, FolderKanban, Clock, ArrowRight, Loader2,
   Globe, Zap, LogOut, Trash2, Sparkles, Layers, Rocket, Bot,
   FileCode, Search, LayoutGrid, List, Download,
-  ChevronRight, Upload, BookOpen, Activity
+  ChevronRight, Upload, BookOpen, Activity, CheckCircle2,
+  MessageSquare, DownloadCloud
 } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import { toast } from 'sonner'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -51,7 +54,6 @@ function StatCounter({ value, duration = 1200 }: { value: number; duration?: num
   const [count, setCount] = useState(0)
 
   useEffect(() => {
-    let start = 0
     const startTime = performance.now()
     const step = (now: number) => {
       const elapsed = now - startTime
@@ -111,6 +113,171 @@ function DashboardSkeletonShimmer() {
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-40 rounded-lg" />
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Getting Started Checklist ────────────────────────────────────────────
+
+function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
+  const getInitialState = () => {
+    const defaults: Record<string, boolean> = {
+      'create-project': projectCount > 0,
+      'chat-ai': false,
+      'export-code': false,
+    }
+    if (typeof window === 'undefined') return defaults
+    try {
+      const saved = localStorage.getItem('builderai-getting-started')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (projectCount > 0) parsed['create-project'] = true
+        return { ...defaults, ...parsed }
+      }
+    } catch {}
+    return defaults
+  }
+
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>(getInitialState)
+
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem('builderai-getting-started', JSON.stringify(checkedItems))
+  }, [checkedItems])
+
+  const toggleItem = (key: string) => {
+    setCheckedItems(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const allDone = Object.values(checkedItems).every(Boolean)
+
+  const items = [
+    { key: 'create-project', label: 'Create your first project', icon: Plus, desc: 'Start a new AI-powered project' },
+    { key: 'chat-ai', label: 'Chat with AI assistant', icon: MessageSquare, desc: 'Describe what you want to build' },
+    { key: 'export-code', label: 'Export your code', icon: DownloadCloud, desc: 'Download as ZIP file' },
+  ]
+
+  if (allDone) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.25 }}
+      className="mb-6 sm:mb-8"
+    >
+      <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+        <Rocket className="w-3.5 h-3.5 text-emerald-500" />
+        Getting Started
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        {items.map((item, i) => {
+          const isDone = checkedItems[item.key]
+          return (
+            <motion.button
+              key={item.key}
+              onClick={() => toggleItem(item.key)}
+              className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all ${
+                isDone
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-card border-border hover:border-emerald-200 dark:hover:border-emerald-800 hover:shadow-md'
+              }`}
+              whileHover={{ scale: 1.01, y: -1 }}
+              whileTap={{ scale: 0.99 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 + i * 0.05 }}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                isDone
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {isDone ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <item.icon className="w-4 h-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className={`text-xs font-semibold ${isDone ? 'line-through text-muted-foreground' : ''}`}>
+                  {item.label}
+                </div>
+                <div className="text-[10px] text-muted-foreground">{item.desc}</div>
+              </div>
+            </motion.button>
+          )
+        })}
+      </div>
+      {/* Progress bar */}
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${(Object.values(checkedItems).filter(Boolean).length / items.length) * 100}%` }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          />
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {Object.values(checkedItems).filter(Boolean).length}/{items.length}
+        </span>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Recent Activity Timeline (Desktop sidebar) ────────────────────────────
+
+function RecentActivityTimeline({ activities }: { activities: Array<{ id: string; name: string; action: string; date: string; status: string }> }) {
+  if (activities.length === 0) return null
+
+  return (
+    <div className="hidden xl:block w-64 flex-shrink-0">
+      <div className="sticky top-20">
+        <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-emerald-500" />
+          Recent Activity
+        </h2>
+        <div className="relative pl-4">
+          {/* Vertical timeline line */}
+          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-emerald-300 via-teal-300 to-transparent dark:from-emerald-700 dark:via-teal-700" />
+          <div className="space-y-0">
+            {activities.map((activity, i) => {
+              const Icon = getActivityIcon(activity.action)
+              return (
+                <motion.div
+                  key={`${activity.id}-${activity.action}-${i}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="flex items-start gap-3 py-2 relative"
+                >
+                  {/* Timeline dot */}
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 z-10 mt-0.5 ${
+                    activity.action === 'created'
+                      ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 ring-2 ring-emerald-200 dark:ring-emerald-800'
+                      : activity.action === 'deployed'
+                      ? 'bg-sky-100 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 ring-2 ring-sky-200 dark:ring-sky-800'
+                      : 'bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 ring-2 ring-amber-200 dark:ring-amber-800'
+                  }`}>
+                    <Icon className="w-2 h-2" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate">
+                      <span className="font-medium">{activity.name}</span>
+                    </p>
+                    <p className="text-[10px] text-muted-foreground capitalize">{activity.action}</p>
+                    <span className="text-[9px] text-muted-foreground/60">
+                      {getRelativeTime(activity.date)}
+                    </span>
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -187,7 +354,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
     .slice(0, 5)
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background page-transition">
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
@@ -221,16 +388,20 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content with optional right sidebar */}
       <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 w-full">
+        <div className="flex gap-6">
+          <div className="flex-1 min-w-0">
         {loading ? (
           <DashboardSkeletonShimmer />
         ) : (
           <>
-            {/* Hero Section with Gradient Background */}
+            {/* Hero Section with Gradient Background + Particle Grid */}
             <div className="mb-6 sm:mb-8 relative">
               <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none animate-parallax-blob" />
               <div className="absolute -top-4 right-0 w-48 h-48 bg-teal-500/4 dark:bg-teal-500/2 rounded-full blur-3xl pointer-events-none animate-parallax-blob-delay" />
+              {/* Subtle particle dot grid in hero background */}
+              <div className="absolute inset-0 bg-dot-pattern opacity-30 pointer-events-none" />
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -258,7 +429,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               </motion.div>
             </div>
 
-            {/* Stats with animated counters */}
+            {/* Stats with animated counters and gradient border on hover */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-6 sm:mb-8">
               {[
                 { label: 'Total Projects', value: projects.length, icon: FolderKanban, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
@@ -272,8 +443,9 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08 }}
                   whileHover={{ scale: 1.03, y: -2 }}
+                  className="gradient-border-hover rounded-lg"
                 >
-                  <Card className={`hover:shadow-md transition-all border ${stat.border}`}>
+                  <Card className={`hover:shadow-md transition-all border ${stat.border} rounded-lg`}>
                     <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
                       <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl ${stat.color} flex-shrink-0`}>
                         <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
@@ -289,6 +461,9 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                 </motion.div>
               ))}
             </div>
+
+            {/* Getting Started Checklist */}
+            <GettingStartedChecklist projectCount={projects.length} />
 
             {/* Quick Actions */}
             <motion.div
@@ -367,13 +542,13 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               </motion.div>
             )}
 
-            {/* Recent Activity Feed */}
+            {/* Recent Activity Feed (inline for non-xl) */}
             {projects.length > 3 && recentActivity.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.35 }}
-                className="mb-6 sm:mb-8"
+                className="mb-6 sm:mb-8 xl:hidden"
               >
                 <h2 className="text-sm font-semibold text-muted-foreground mb-3">Recent Activity</h2>
                 <div className="rounded-lg border bg-card">
@@ -502,6 +677,11 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
             )}
           </>
         )}
+          </div>
+
+          {/* Right sidebar - Recent Activity Timeline (desktop XL only) */}
+          <RecentActivityTimeline activities={recentActivity} />
+        </div>
       </main>
 
       {/* Footer */}
@@ -569,9 +749,6 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   )
 }
 
-import { Separator } from '@/components/ui/separator'
-import { toast } from 'sonner'
-
 function ProjectCard({ project, index, onSelect, onDelete }: {
   project: any
   index: number
@@ -589,7 +766,7 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
       whileHover={{ scale: 1.02 }}
     >
       <Card
-        className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+        className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] gradient-border-hover"
         onClick={() => onSelect(project.id)}
       >
         {/* Gradient accent on top */}
@@ -678,7 +855,7 @@ function ProjectListItem({ project, index, onSelect, onDelete }: {
       whileHover={{ x: 4 }}
     >
       <Card
-        className="cursor-pointer hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group"
+        className="cursor-pointer hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group gradient-border-hover"
         onClick={() => onSelect(project.id)}
       >
         <CardContent className="p-3 flex items-center gap-3">

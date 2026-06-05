@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import {
   Code2, Shield, Globe, Keyboard, Check, Quote, Github,
   ChevronLeft, ChevronRight
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const FEATURES = [
   {
@@ -131,7 +132,7 @@ function AnimatedCounter({ value, suffix, duration = 2000 }: { value: number; su
   )
 }
 
-// Password strength indicator
+// Password strength indicator with smooth transitions
 function PasswordStrength({ password }: { password: string }) {
   if (!password) return null
 
@@ -149,23 +150,56 @@ function PasswordStrength({ password }: { password: string }) {
   const labels = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong']
   const colors = ['', 'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-emerald-500', 'bg-emerald-600']
   const textColors = ['', 'text-red-500', 'text-orange-500', 'text-amber-500', 'text-emerald-500', 'text-emerald-600']
+  const percentage = (strength / 5) * 100
 
   return (
-    <div className="mt-1.5">
-      <div className="flex gap-1">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-              i < strength ? colors[strength] : 'bg-muted'
-            }`}
-          />
-        ))}
+    <div className="mt-1.5 space-y-1">
+      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+        <motion.div
+          className={`h-full rounded-full ${colors[strength]}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${percentage}%` }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        />
       </div>
-      <p className={`text-[10px] mt-0.5 ${textColors[strength]}`}>
+      <p className={`text-[10px] font-medium ${textColors[strength]} transition-colors duration-300`}>
         {labels[strength]}
       </p>
     </div>
+  )
+}
+
+// Typing animation component for hero heading
+function TypingText({ text, speed = 50, delay = 0 }: { text: string; speed?: number; delay?: number }) {
+  const [displayed, setDisplayed] = useState('')
+  const [cursorVisible, setCursorVisible] = useState(true)
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    const delayTimer = setTimeout(() => {
+      startedRef.current = true
+      let i = 0
+      const timer = setInterval(() => {
+        if (i < text.length) {
+          setDisplayed(text.slice(0, i + 1))
+          i++
+        } else {
+          clearInterval(timer)
+          setTimeout(() => setCursorVisible(false), 2000)
+        }
+      }, speed)
+      return () => clearInterval(timer)
+    }, delay)
+    return () => clearTimeout(delayTimer)
+  }, [text, speed, delay])
+
+  return (
+    <span>
+      {displayed}
+      {cursorVisible && (
+        <span className="animate-cursor-blink text-emerald-500 ml-0.5">|</span>
+      )}
+    </span>
   )
 }
 
@@ -261,12 +295,12 @@ export function AuthScreen() {
           <div className="relative">
             <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] dark:opacity-[0.02] pointer-events-none" />
 
-            {/* Hero Text */}
+            {/* Hero Text with typing animation */}
             <h1 className="text-4xl xl:text-5xl font-bold tracking-tight leading-tight mb-4 relative">
-              Build websites with
+              <TypingText text="Build websites with" speed={40} delay={600} />
               <br />
               <span className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent animate-gradient-shift">
-                AI superpowers
+                <TypingText text="AI superpowers" speed={50} delay={1800} />
               </span>
             </h1>
           </div>
@@ -470,29 +504,29 @@ export function AuthScreen() {
                       transition={{ duration: 0.2 }}
                     >
                       <form onSubmit={handleLogin} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="login-email">Email</Label>
+                        <div className="floating-label-group">
                           <Input
                             id="login-email"
                             type="email"
-                            placeholder="you@example.com"
+                            placeholder=" "
                             value={loginEmail}
                             onChange={(e) => setLoginEmail(e.target.value)}
-                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            className="h-11 sm:h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[44px] sm:min-h-0"
                             required
                           />
+                          <Label htmlFor="login-email">Email</Label>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="login-password">Password</Label>
+                        <div className="floating-label-group">
                           <Input
                             id="login-password"
                             type="password"
-                            placeholder="••••••••"
+                            placeholder=" "
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
-                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            className="h-11 sm:h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[44px] sm:min-h-0"
                             required
                           />
+                          <Label htmlFor="login-password">Password</Label>
                         </div>
                         {/* Remember me checkbox */}
                         <div className="flex items-center gap-2">
@@ -584,42 +618,42 @@ export function AuthScreen() {
                       transition={{ duration: 0.2 }}
                     >
                       <form onSubmit={handleRegister} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="register-name">Name</Label>
+                        <div className="floating-label-group">
                           <Input
                             id="register-name"
                             type="text"
-                            placeholder="Your name"
+                            placeholder=" "
                             value={registerName}
                             onChange={(e) => setRegisterName(e.target.value)}
-                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            className="h-11 sm:h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[44px] sm:min-h-0"
                             required
                           />
+                          <Label htmlFor="register-name">Name</Label>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="register-email">Email</Label>
+                        <div className="floating-label-group">
                           <Input
                             id="register-email"
                             type="email"
-                            placeholder="you@example.com"
+                            placeholder=" "
                             value={registerEmail}
                             onChange={(e) => setRegisterEmail(e.target.value)}
-                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            className="h-11 sm:h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[44px] sm:min-h-0"
                             required
                           />
+                          <Label htmlFor="register-email">Email</Label>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="register-password">Password</Label>
+                        <div className="floating-label-group">
                           <Input
                             id="register-password"
                             type="password"
-                            placeholder="••••••••"
+                            placeholder=" "
                             value={registerPassword}
                             onChange={(e) => setRegisterPassword(e.target.value)}
-                            className="h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            className="h-11 sm:h-10 transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 min-h-[44px] sm:min-h-0"
                             required
                             minLength={4}
                           />
+                          <Label htmlFor="register-password">Password</Label>
                           <PasswordStrength password={registerPassword} />
                         </div>
                         <AnimatePresence>
@@ -721,7 +755,7 @@ export function AuthScreen() {
           {/* Trusted by section */}
           <div className="mt-6 text-center">
             <p className="text-xs text-muted-foreground mb-3">Trusted by developers worldwide</p>
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-4 flex-wrap">
               {TRUST_METRICS.map((metric) => (
                 <div key={metric.label} className="flex items-center gap-1">
                   <Check className="w-3 h-3 text-emerald-500" />
@@ -739,8 +773,21 @@ export function AuthScreen() {
       <div className="hidden sm:block lg:hidden fixed top-4 right-4 z-50">
         <ThemeToggle />
       </div>
+
+      {/* Floating Powered By Badge */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1, duration: 0.5 }}
+          className="glass-card flex items-center gap-2 px-3 py-1.5 rounded-full"
+        >
+          <Zap className="w-3 h-3 text-emerald-500" />
+          <span className="text-[10px] text-muted-foreground">
+            Powered by <span className="font-semibold gradient-text">BuilderAI</span> &amp; Next.js
+          </span>
+        </motion.div>
+      </div>
     </div>
   )
 }
-
-import { toast } from 'sonner'

@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Copy, Check, FileCode, Pencil, X, Save, Loader2, ArrowLeft, Search, GitBranch, Replace } from 'lucide-react'
+import { Copy, Check, FileCode, Pencil, X, Save, Loader2, ArrowLeft, Search, GitBranch, Replace, Hash } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -27,6 +27,15 @@ const LANGUAGE_ICON_MAP: Record<string, { icon: React.ElementType; color: string
   sql: { icon: FileCode, color: 'text-teal-500' },
   text: { icon: FileCode, color: 'text-muted-foreground' },
 }
+
+// Bracket pair colors for visual colorization
+const BRACKET_COLORS = [
+  '#ffd700', // gold
+  '#da70d6', // orchid
+  '#179fff', // deep sky blue
+  '#10b981', // emerald
+  '#ef4444', // red
+]
 
 // ─── Breadcrumb Path Component ──────────────────────────────────────────────
 
@@ -150,6 +159,61 @@ function FindReplaceBar({ content, onClose, onHighlight }: {
   )
 }
 
+// ─── Go To Line Dialog ────────────────────────────────────────────────────
+
+function GoToLineDialog({ maxLine, onGoToLine, onClose }: {
+  maxLine: number
+  onGoToLine: (line: number) => void
+  onClose: () => void
+}) {
+  const [lineInput, setLineInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const line = parseInt(lineInput, 10)
+    if (line >= 1 && line <= maxLine) {
+      onGoToLine(line)
+      onClose()
+    } else {
+      toast.error(`Line must be between 1 and ${maxLine}`)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -5 }}
+      className="absolute top-2 left-1/2 -translate-x-1/2 z-30 glass-card rounded-lg shadow-lg border border-border/50 px-3 py-2 flex items-center gap-2"
+    >
+      <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <Input
+          ref={inputRef}
+          value={lineInput}
+          onChange={(e) => setLineInput(e.target.value)}
+          placeholder={`1-${maxLine}`}
+          className="h-7 w-24 text-xs"
+          type="number"
+          min={1}
+          max={maxLine}
+        />
+        <Button type="submit" size="sm" variant="secondary" className="h-7 text-[10px] px-2">
+          Go
+        </Button>
+      </form>
+      <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
+        <X className="w-3 h-3 text-muted-foreground" />
+      </button>
+    </motion.div>
+  )
+}
+
 interface CodeViewerProps {
   file: ProjectFile | null
   onSave?: (fileId: string, content: string) => Promise<void>
@@ -165,7 +229,11 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
   const [showFindReplace, setShowFindReplace] = useState(false)
   const [highlightedLines, setHighlightedLines] = useState<number[]>([])
   const [hoveredLine, setHoveredLine] = useState<number | null>(null)
+  const [editingLine, setEditingLine] = useState<number | null>(null)
+  const [showGoToLine, setShowGoToLine] = useState(false)
+  const [cursorLine, setCursorLine] = useState<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const codeRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
   // When file changes, exit edit mode
@@ -174,6 +242,9 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
     setEditContent('')
     setHasLocalChanges(false)
     setShowFindReplace(false)
+    setShowGoToLine(false)
+    setEditingLine(null)
+    setCursorLine(null)
   }, [file?.id])
 
   // When entering edit mode, populate textarea
@@ -192,20 +263,28 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
     }
   }, [editContent, editMode, file])
 
-  // Keyboard shortcut for Ctrl+F
+  // Keyboard shortcuts for Ctrl+F and Ctrl+G
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !editMode && file) {
         e.preventDefault()
         setShowFindReplace(true)
       }
-      if (e.key === 'Escape' && showFindReplace) {
-        setShowFindReplace(false)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !editMode && file) {
+        e.preventDefault()
+        setShowGoToLine(true)
+      }
+      if (e.key === 'Escape') {
+        if (showFindReplace) {
+          setShowFindReplace(false)
+          setHighlightedLines([])
+        }
+        if (showGoToLine) setShowGoToLine(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [editMode, file, showFindReplace])
+  }, [editMode, file, showFindReplace, showGoToLine])
 
   const handleHighlight = useCallback((indices: number[]) => {
     // Convert character indices to line numbers
@@ -224,6 +303,63 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
     }
     setHighlightedLines(lineIndices)
   }, [file])
+
+  // Go to line handler
+  const handleGoToLine = useCallback((lineNum: number) => {
+    if (!codeRef.current) return
+    // Scroll to the line in the code area
+    const lineHeight = isMobile ? 12 * 1.6 : 13 * 1.6
+    const scrollTarget = (lineNum - 1) * lineHeight
+    codeRef.current.scrollTop = scrollTarget - 50
+    setCursorLine(lineNum)
+    // Clear cursor line after 3 seconds
+    setTimeout(() => setCursorLine(null), 3000)
+  }, [isMobile])
+
+  // Track cursor line in edit mode
+  const handleTextareaCursorChange = useCallback(() => {
+    if (!textareaRef.current) return
+    const textarea = textareaRef.current
+    const textBeforeCursor = textarea.value.substring(0, textarea.selectionStart)
+    const currentLine = textBeforeCursor.split('\n').length
+    setEditingLine(currentLine)
+  }, [])
+
+  // Compute indentation guides data (must be before early return)
+  const fileContent = file?.content || ''
+  const indentGuides = useMemo(() => {
+    const lines = fileContent.split('\n')
+    const maxIndent = Math.max(
+      ...lines.slice(0, 200).map(line => {
+        const match = line.match(/^(\s*)/)
+        return match ? Math.floor(match[1].length / 2) : 0
+      }),
+      0
+    )
+    return Array.from({ length: Math.min(maxIndent, 8) }, (_, i) => i + 1)
+  }, [fileContent])
+
+  // Compute bracket colorization for display (must be before early return)
+  const bracketColorMap = useMemo(() => {
+    const content = fileContent
+    const stack: { char: string; pos: number; depth: number }[] = []
+    const colorMap = new Map<number, number>()
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i]
+      if (char === '(' || char === '[' || char === '{') {
+        const depth = stack.length
+        stack.push({ char, pos: i, depth })
+        colorMap.set(i, depth % BRACKET_COLORS.length)
+      } else if (char === ')' || char === ']' || char === '}') {
+        const opening = stack.pop()
+        if (opening) {
+          colorMap.set(i, opening.depth % BRACKET_COLORS.length)
+        }
+      }
+    }
+    return colorMap
+  }, [fileContent])
 
   if (!file) {
     return (
@@ -252,6 +388,7 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
       setEditMode(false)
       setEditContent('')
       setHasLocalChanges(false)
+      setEditingLine(null)
     } else {
       setEditMode(true)
     }
@@ -264,6 +401,7 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
       await onSave(file.id, editContent)
       setEditMode(false)
       setHasLocalChanges(false)
+      setEditingLine(null)
       toast.success('File saved')
     } catch (err) {
       toast.error('Failed to save file')
@@ -276,12 +414,16 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
     setEditMode(false)
     setEditContent('')
     setHasLocalChanges(false)
+    setEditingLine(null)
   }
 
   const showUnsavedDot = hasUnsavedChanges || hasLocalChanges
 
   const lineCount = file.content.split('\n').length
   const wordCount = file.content.split(/\s+/).filter(Boolean).length
+
+  // Line height for calculations
+  const lineHeight = isMobile ? 12 * 1.6 : 13 * 1.6
 
   return (
     <div className={`flex flex-col h-full ${editMode && isMobile ? 'fixed inset-0 z-50 bg-background' : ''}`}>
@@ -303,6 +445,11 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
               <span className="w-2 h-2 rounded-full bg-amber-500" title="Unsaved changes" />
             )}
             <span className="text-xs font-mono truncate max-w-[150px]">{file.path}</span>
+            {editingLine && (
+              <Badge variant="secondary" className="text-[9px] px-1 h-4">
+                Ln {editingLine}
+              </Badge>
+            )}
           </div>
           <Button
             variant="default"
@@ -372,6 +519,13 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
               ) : (
                 <>
                   <button
+                    onClick={() => setShowGoToLine(true)}
+                    className="p-1.5 sm:p-2 rounded-md hover:bg-muted transition-colors min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                    title="Go to Line (Ctrl+G)"
+                  >
+                    <Hash className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
+                  </button>
+                  <button
                     onClick={() => setShowFindReplace(!showFindReplace)}
                     className="p-1.5 sm:p-2 rounded-md hover:bg-muted transition-colors min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                     title="Find & Replace (Ctrl+F)"
@@ -416,11 +570,28 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
 
       {/* Code Content */}
       {editMode ? (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden relative">
+          {/* Editing line indicator */}
+          {editingLine && (
+            <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none">
+              <div
+                className="bg-emerald-500/10 dark:bg-emerald-500/5 border-l-2 border-emerald-500"
+                style={{
+                  top: `${(editingLine - 1) * lineHeight}px`,
+                  height: `${lineHeight}px`,
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                }}
+              />
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
+            onKeyUp={handleTextareaCursorChange}
+            onClick={handleTextareaCursorChange}
             className={`w-full h-full resize-none bg-[#282c34] text-[#abb2bf] font-mono leading-[1.6] p-3 sm:p-4 outline-none border-none focus:ring-0 ${
               isMobile ? 'text-[13px]' : 'text-[0.8125rem]'
             }`}
@@ -429,9 +600,23 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
         </div>
       ) : (
         <ScrollArea className="flex-1">
-          <div className="relative">
+          <div className="relative" ref={codeRef}>
+            {/* Indentation guides overlay */}
+            {indentGuides.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none" style={{ padding: isMobile ? '0.75rem' : '1rem' }}>
+                {indentGuides.map((indent) => (
+                  <div
+                    key={`indent-${indent}`}
+                    className="absolute top-0 bottom-0 border-l border-emerald-500/5 dark:border-emerald-500/3"
+                    style={{
+                      left: `${indent * 2}ch`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             {/* Line highlight overlay */}
-            {(hoveredLine !== null || highlightedLines.length > 0) && (
+            {(hoveredLine !== null || highlightedLines.length > 0 || cursorLine !== null) && (
               <div className="absolute inset-0 pointer-events-none" style={{ padding: isMobile ? '0.75rem' : '1rem' }}>
                 {/* Highlighted search lines */}
                 {highlightedLines.map(lineNum => (
@@ -439,18 +624,30 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
                     key={`search-${lineNum}`}
                     className="absolute left-0 right-0 bg-emerald-500/10 dark:bg-emerald-500/5"
                     style={{
-                      top: `${(lineNum - 1) * 1.6 * (isMobile ? 12 : 13)}px`,
-                      height: `${1.6 * (isMobile ? 12 : 13)}px`,
+                      top: `${(lineNum - 1) * lineHeight}px`,
+                      height: `${lineHeight}px`,
                     }}
                   />
                 ))}
+                {/* Cursor line (from Go To Line) */}
+                {cursorLine !== null && !highlightedLines.includes(cursorLine) && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute left-0 right-0 bg-emerald-500/15 dark:bg-emerald-500/8 border-l-2 border-emerald-500"
+                    style={{
+                      top: `${(cursorLine - 1) * lineHeight}px`,
+                      height: `${lineHeight}px`,
+                    }}
+                  />
+                )}
                 {/* Hovered line */}
-                {hoveredLine !== null && !highlightedLines.includes(hoveredLine) && (
+                {hoveredLine !== null && !highlightedLines.includes(hoveredLine) && hoveredLine !== cursorLine && (
                   <div
                     className="absolute left-0 right-0 bg-muted/20"
                     style={{
-                      top: `${(hoveredLine - 1) * 1.6 * (isMobile ? 12 : 13)}px`,
-                      height: `${1.6 * (isMobile ? 12 : 13)}px`,
+                      top: `${(hoveredLine - 1) * lineHeight}px`,
+                      height: `${lineHeight}px`,
                     }}
                   />
                 )}
@@ -476,13 +673,22 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
               }}
               wrapLines
               wrapLongLines
-              lineNumberContainerStyle={{
-                // We handle line hover via the overlay above
-              }}
+              lineNumberContainerStyle={{}}
             >
               {file.content}
             </SyntaxHighlighter>
           </div>
+
+          {/* Go To Line Dialog */}
+          <AnimatePresence>
+            {showGoToLine && (
+              <GoToLineDialog
+                maxLine={lineCount}
+                onGoToLine={handleGoToLine}
+                onClose={() => setShowGoToLine(false)}
+              />
+            )}
+          </AnimatePresence>
         </ScrollArea>
       )}
 
@@ -496,6 +702,12 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
             </span>
             <span>Ln {lineCount}</span>
             <span className="hidden sm:inline">{wordCount} words</span>
+            {editMode && editingLine && (
+              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                Editing Ln {editingLine}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {showUnsavedDot && (

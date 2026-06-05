@@ -16,7 +16,8 @@ import {
   Brain, Code2, ShieldCheck, TestTube, Rocket,
   Plus, MessageSquare, Code, Keyboard,
   Copy, Check, ThumbsUp, ThumbsDown, RefreshCw,
-  ChevronDown, FileCode, GitCompare
+  ChevronDown, FileCode, GitCompare, Download,
+  Hash
 } from 'lucide-react'
 import { ModelSelector } from '@/components/model-selector'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
@@ -32,15 +33,10 @@ const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; lab
   assistant: { icon: Bot, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30', label: 'AI' },
 }
 
-// Typing indicator: agent name + animated dots
-function AgentTypingIndicator() {
-  const { currentAgent } = useChatStore()
-  const agentLabel = currentAgent?.agent
-    ? AGENT_CONFIG[currentAgent.agent]?.label || 'AI'
-    : 'AI'
-  const agentColor = currentAgent?.agent
-    ? AGENT_CONFIG[currentAgent.agent]?.color || 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
-    : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+// Wave/sound animation when AI is typing (like ChatGPT dots but more polished)
+function WaveTypingIndicator({ agentKey }: { agentKey?: string }) {
+  const agentLabel = agentKey ? AGENT_CONFIG[agentKey]?.label || 'AI' : 'AI'
+  const agentColor = agentKey ? AGENT_CONFIG[agentKey]?.color || 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' : 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
 
   return (
     <div className="flex gap-2.5">
@@ -49,28 +45,59 @@ function AgentTypingIndicator() {
           <Bot className="w-3 h-3" />
         </AvatarFallback>
       </Avatar>
-      <div className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 bg-muted/50">
+      <div className="inline-flex items-center gap-3 rounded-xl px-4 py-2.5 bg-muted/50">
         <span className={`text-[11px] font-medium ${agentColor.split(' ')[0]}`}>{agentLabel} is thinking</span>
-        <div className="flex items-center gap-0.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '200ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-typing-bounce" style={{ animationDelay: '400ms' }} />
+        <div className="flex items-center gap-[3px]">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="w-[3px] rounded-full bg-emerald-500 animate-wave-bar"
+              style={{
+                height: '12px',
+                animationDelay: `${i * 0.15}s`,
+                animationDuration: `${0.6 + i * 0.1}s`,
+              }}
+            />
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-// Animated pipeline progress with connected lines
-function AgentStatusBar() {
+// Token counter component
+function TokenCounter({ messages }: { messages: ChatMessage[] }) {
+  const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0)
+  const estimatedTokens = Math.round(totalChars / 4)
+
+  if (messages.length === 0) return null
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-default">
+            <Hash className="w-2.5 h-2.5" />
+            <span>~{estimatedTokens.toLocaleString()} tokens</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-[10px]">
+          Estimated {estimatedTokens.toLocaleString()} tokens (~4 chars/token) across {messages.length} messages
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+// Vertical timeline agent pipeline visualization
+function AgentPipelineTimeline() {
   const { agentPipeline, isProcessing, currentAgent } = useChatStore()
 
   if (agentPipeline.length === 0 && !isProcessing) return null
 
   const pipelineOrder = ['planner', 'engineer', 'reviewer', 'qa', 'deployer']
   const completedCount = agentPipeline.filter(a => a.status === 'complete').length
-  const totalCount = pipelineOrder.length
-  const progress = (completedCount / totalCount) * 100
+  const progress = (completedCount / pipelineOrder.length) * 100
 
   return (
     <div className="border-t bg-muted/30 px-3 py-2">
@@ -83,7 +110,7 @@ function AgentStatusBar() {
           transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
-      {/* Connected pipeline */}
+      {/* Vertical timeline pipeline */}
       <div className="flex items-center gap-0 overflow-x-auto">
         <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap mr-1.5">Pipeline:</span>
         {pipelineOrder.map((agentKey, i) => {
@@ -105,7 +132,9 @@ function AgentStatusBar() {
                     : 'bg-muted text-muted-foreground'
                 }`}
               >
-                <config.icon className="w-2.5 h-2.5" />
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  isActive ? 'bg-current animate-pulse' : isDone ? 'bg-emerald-500' : 'bg-muted-foreground/40'
+                }`} />
                 <span>{config.label}</span>
                 {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
                 {isDone && <span className="text-[8px]">✓</span>}
@@ -354,6 +383,40 @@ export function ChatPanel() {
     toast.info('File changes discarded')
   }, [])
 
+  // Export conversation as markdown
+  const handleExportChat = useCallback(() => {
+    if (messages.length === 0) {
+      toast.info('No messages to export')
+      return
+    }
+
+    const title = currentConversation?.title || 'Chat Export'
+    const date = new Date().toLocaleString()
+    let markdown = `# ${title}\n\nExported on ${date}\n\n---\n\n`
+
+    messages.forEach((msg) => {
+      const config = AGENT_CONFIG[msg.role]
+      const role = config?.label || (msg.role === 'user' ? 'You' : 'AI')
+      const timestamp = msg.createdAt
+        ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : ''
+
+      markdown += `### ${role}${timestamp ? ` _${timestamp}_` : ''}\n\n`
+      markdown += `${msg.content}\n\n---\n\n`
+    })
+
+    const blob = new Blob([markdown], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success('Chat exported as markdown')
+  }, [messages, currentConversation])
+
   const handleSend = async () => {
     if (!input.trim() || !currentProject) return
 
@@ -426,7 +489,21 @@ export function ChatPanel() {
           </Badge>
         </div>
         <div className="flex items-center gap-1">
+          {/* Token Counter */}
+          <TokenCounter messages={messages} />
+          <div className="w-px h-3 bg-border mx-0.5" />
           <ModelSelector />
+          {/* Export chat button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleExportChat} title="Export chat as markdown">
+                  <Download className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">Export as Markdown</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleNewChat} title="New Chat">
             <Plus className="w-3 h-3" />
           </Button>
@@ -525,9 +602,9 @@ export function ChatPanel() {
             ))}
           </AnimatePresence>
 
-          {/* Typing indicator with agent name */}
+          {/* Wave/sound typing indicator */}
           {isProcessing && messages.length > 0 && (
-            <AgentTypingIndicator />
+            <WaveTypingIndicator agentKey={useChatStore.getState().currentAgent?.agent} />
           )}
 
           {/* Error */}
@@ -609,7 +686,7 @@ export function ChatPanel() {
       </div>
 
       {/* Agent Status Bar */}
-      <AgentStatusBar />
+      <AgentPipelineTimeline />
 
       {/* Diff Viewer Dialog */}
       <DiffDialog
