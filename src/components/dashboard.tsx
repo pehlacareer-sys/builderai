@@ -223,8 +223,8 @@ export function Dashboard() {
           <>
             {/* Hero Section with Gradient Background */}
             <div className="mb-6 sm:mb-8 relative">
-              <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -top-4 right-0 w-48 h-48 bg-teal-500/4 dark:bg-teal-500/2 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none animate-parallax-blob" />
+              <div className="absolute -top-4 right-0 w-48 h-48 bg-teal-500/4 dark:bg-teal-500/2 rounded-full blur-3xl pointer-events-none animate-parallax-blob-delay" />
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -240,7 +240,7 @@ export function Dashboard() {
                 </div>
                 {/* New Project button with animated gradient border */}
                 <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-400 via-teal-500 to-emerald-400 rounded-lg opacity-50 group-hover:opacity-100 blur-sm animate-gradient-shift transition-opacity" />
+                  <div className="absolute -inset-0.5 gradient-border-emerald rounded-lg opacity-50 group-hover:opacity-100 blur-sm transition-opacity" />
                   <Button
                     onClick={() => setShowCreate(true)}
                     className="relative bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 min-h-[44px] hover:scale-[1.02] active:scale-[0.98]"
@@ -329,8 +329,11 @@ export function Dashboard() {
               >
                 <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">How It Works</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative">
-                  {/* Connecting lines between steps (desktop only) */}
-                  <div className="hidden lg:block absolute top-1/2 left-[25%] right-[25%] h-px bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-300 dark:from-emerald-700 dark:via-teal-700 dark:to-sky-700 opacity-30" />
+                  {/* Animated connecting lines between steps (desktop only) */}
+                  <div className="hidden lg:block absolute top-1/2 left-[25%] right-[25%] h-px">
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-300 dark:from-emerald-700 dark:via-teal-700 dark:to-sky-700 opacity-30" />
+                    <div className="absolute inset-0 animate-line-flow h-full" />
+                  </div>
                   {[
                     { icon: Bot, step: '1', title: 'Describe', desc: 'Tell AI what you want to build', color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30', border: 'border-violet-200/50 dark:border-violet-800/50' },
                     { icon: Layers, step: '2', title: 'Plan', desc: 'AI creates an architecture plan', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200/50 dark:border-emerald-800/50' },
@@ -570,6 +573,7 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
   onDelete: (e: React.MouseEvent, id: string) => Promise<void>
 }) {
   const StatusIcon = STATUS_ICONS[project.status] || FileCode
+  const wasEditedRecently = (Date.now() - new Date(project.updatedAt).getTime()) < 3600000 // 1 hour
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -593,6 +597,11 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
               <CardTitle className="text-sm sm:text-base group-hover:text-emerald-600 transition-colors">
                 {project.name}
               </CardTitle>
+              {wasEditedRecently && (
+                <Badge className="text-[8px] px-1 py-0 h-4 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 animate-pulse">
+                  Recently Edited
+                </Badge>
+              )}
             </div>
             <Badge variant="secondary" className={`text-[9px] sm:text-[10px] px-1 sm:px-1.5 ${STATUS_COLORS[project.status] || STATUS_COLORS.draft}`}>
               {STATUS_LABELS[project.status] || project.status}
@@ -601,6 +610,9 @@ function ProjectCard({ project, index, onSelect, onDelete }: {
           <CardDescription className="line-clamp-2 ml-7 sm:ml-10 text-xs sm:text-sm">
             {project.description || 'No description'}
           </CardDescription>
+          <p className="text-[10px] text-muted-foreground/60 ml-7 sm:ml-10 mt-1">
+            Last edited {getRelativeTime(project.updatedAt)}
+          </p>
         </CardHeader>
         <CardContent className="pt-0 p-3 sm:p-6">
           <div className="flex items-center justify-between ml-7 sm:ml-10">
@@ -650,6 +662,7 @@ function ProjectListItem({ project, index, onSelect, onDelete }: {
   onDelete: (e: React.MouseEvent, id: string) => Promise<void>
 }) {
   const StatusIcon = STATUS_ICONS[project.status] || FileCode
+  const wasEditedRecently = (Date.now() - new Date(project.updatedAt).getTime()) < 3600000
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -674,8 +687,16 @@ function ProjectListItem({ project, index, onSelect, onDelete }: {
               <Badge variant="secondary" className={`text-[9px] px-1 ${STATUS_COLORS[project.status] || STATUS_COLORS.draft}`}>
                 {STATUS_LABELS[project.status] || project.status}
               </Badge>
+              {wasEditedRecently && (
+                <Badge className="text-[8px] px-1 py-0 h-4 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 animate-pulse">
+                  Recently Edited
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground truncate">{project.description || 'No description'}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+              Last edited {getRelativeTime(project.updatedAt)}
+            </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-shrink-0">
             <Clock className="w-3 h-3" />

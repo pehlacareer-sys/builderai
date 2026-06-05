@@ -292,6 +292,7 @@ export function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [scrollProgress, setScrollProgress] = useState(0)
 
   useEffect(() => {
     if (currentProject) {
@@ -316,6 +317,10 @@ export function ChatPanel() {
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight
     setShowScrollBtn(distanceFromBottom > 100)
+    // Calculate scroll progress
+    const maxScroll = scrollHeight - clientHeight
+    const progress = maxScroll > 0 ? (scrollTop / maxScroll) * 100 : 0
+    setScrollProgress(progress)
   }, [])
 
   useEffect(() => {
@@ -387,7 +392,7 @@ export function ChatPanel() {
           <span className="text-xs font-medium truncate">
             {currentConversation?.title || 'New Chat'}
           </span>
-          <Badge variant="outline" className="text-[9px] px-1 flex-shrink-0 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
+          <Badge variant="outline" className="text-[9px] px-1 flex-shrink-0 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 animate-breathing">
             <span className="relative flex h-1.5 w-1.5 mr-1">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
@@ -425,6 +430,8 @@ export function ChatPanel() {
 
       {/* Messages Area - with subtle gradient background */}
       <div className="relative flex-1 overflow-hidden">
+        {/* Scroll progress indicator */}
+        <div className="scroll-progress-bar" style={{ width: `${scrollProgress}%` }} />
         {/* Subtle gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/[0.02] via-transparent to-teal-500/[0.02] dark:from-emerald-500/[0.01] dark:to-teal-500/[0.01] pointer-events-none" />
         <div
@@ -456,7 +463,7 @@ export function ChatPanel() {
                     <button
                       key={i}
                       onClick={() => setInput(typeof suggestion === 'string' ? suggestion : suggestion.text)}
-                      className="w-full text-left px-3 py-2 text-xs rounded-lg border border-border/50 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all hover:shadow-sm group"
+                      className="w-full text-left px-3 py-2 text-xs rounded-lg border border-border/50 hover:border-transparent suggestion-btn-gradient hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all hover:shadow-sm group"
                     >
                       <Sparkles className="w-3 h-3 inline mr-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
                       {typeof suggestion === 'string' ? suggestion : suggestion.text}

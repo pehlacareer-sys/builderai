@@ -223,6 +223,21 @@ export function AuthScreen() {
         <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full bg-emerald-500/10 dark:bg-emerald-500/5 blur-3xl animate-blob" />
         <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-teal-500/10 dark:bg-teal-500/5 blur-3xl animate-blob animation-delay-2000" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-violet-500/5 dark:bg-violet-500/3 blur-3xl animate-blob animation-delay-4000" />
+
+        {/* Floating particle dots */}
+        {[...Array(12)].map((_, i) => (
+          <div
+            key={i}
+            className={`absolute w-1 h-1 rounded-full bg-emerald-400/30 dark:bg-emerald-400/20 ${
+              i % 3 === 0 ? 'animate-particle' : i % 3 === 1 ? 'animate-particle-slow' : 'animate-particle-fast'
+            }`}
+            style={{
+              left: `${5 + (i * 8) % 90}%`,
+              bottom: `-5%`,
+              animationDelay: `${i * 1.3}s`,
+            }}
+          />
+        ))}
       </div>
 
       {/* Left side - Marketing / Hero (hidden on mobile) */}
@@ -409,7 +424,7 @@ export function AuthScreen() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 animate-pulse-glow"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 animate-pulsing-ring"
             >
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -506,7 +521,7 @@ export function AuthScreen() {
                         </AnimatePresence>
                         <Button
                           type="submit"
-                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40"
+                          className={`w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 ${!isLoading ? 'animate-btn-shimmer' : ''}`}
                           disabled={isLoading}
                         >
                           {isLoading ? (
@@ -621,7 +636,7 @@ export function AuthScreen() {
                         </AnimatePresence>
                         <Button
                           type="submit"
-                          className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40"
+                          className={`w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 ${!isLoading ? 'animate-btn-shimmer' : ''}`}
                           disabled={isLoading}
                         >
                           {isLoading ? (

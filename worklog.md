@@ -803,3 +803,67 @@ Comprehensive mobile responsiveness overhaul across all major components. Uses `
 - **Notification Center**: ✅ Bell icon with badge, popover list, mark all read, clear, auto-generated notifications
 - **Memory Panel**: ✅ Tab with Brain icon, grouped items, search/filter, add dialog, delete
 - **API Integration**: ✅ getMemory, upsertMemory, deleteMemory all working
+
+---
+Task ID: 5
+Agent: Bug Fix Agent
+Task: Fix Validation Panel and Language Mapping Bugs
+
+Work Log:
+- Fixed `getLanguageFromPath` function: replaced incorrect map keys (language names like "typescript", "javascript") with correct file extensions ("ts", "tsx", "js", "jsx", etc.)
+- Added missing extensions: `htm`, `md`, `mdx`, `yml`, `mjs`, `txt`
+- Updated `validationResults` state type to include `details?: string` field
+- Added new `validationSummary` state: `{ total: number; passed: number; failed: number; warnings: number } | null`
+- Updated `handleValidate` to extract and store `summary` from API response, with fallback to computed counts
+- Completely rewrote `ValidationPanel` component with:
+  - Summary progress bar (horizontal stacked bar with green/amber/red animated segments)
+  - Pass/fail/warning count badges below progress bar
+  - Categorized results: Required Files, Recommended Files, Configuration, Code Quality, Other
+  - Expandable details section for each result item
+  - Improved visual styling with emerald/teal gradient Run Checks button
+  - Better empty state with larger icon
+- Passed `summary` prop to both `ValidationPanel` instances (desktop TabsContent and mobile rightPanel)
+- Ran `bun run lint` — zero errors
+- Verified dev server compiles successfully
+
+Stage Summary:
+- Both bugs fixed: language mapping now correctly maps file extensions to language names, validation panel now shows summary bar, categorized results, and expandable details
+- All changes in `/src/components/workspace.tsx`
+- Lint: ✅ Clean | Dev Server: ✅ Compiling successfully
+
+---
+Task ID: 8
+Agent: Command Palette Agent
+Task: Create Command Palette (Cmd+K) Component
+
+Work Log:
+- Read project store, workspace.tsx, command.tsx UI component, keyboard-shortcut-help, theme-toggle, and API module to understand the existing architecture
+- Created `/src/components/command-palette.tsx` with:
+  - `CommandPaletteAction` interface defining action shape (id, label, description, icon, shortcut, section, onSelect, keywords, filePath, language)
+  - `UseCommandPaletteOptions` interface for hook callbacks
+  - `useCommandPalette` hook: manages open/close state, registers Ctrl+K/Cmd+K shortcut, builds actions list from project files and predefined actions/nav/settings
+  - `CommandPalette` component: glass-morphism dialog with backdrop-blur-xl, emerald/teal accent colors, Framer Motion animations
+  - Four sections: Files (from project store), Actions (New Project, Validate, Deploy, Toggle Theme, Toggle Sidebar, Focus Mode, Export ZIP), Navigation (Dashboard, Chat, Code, Preview, Validate, History, Memory, Analytics), Settings (Project Settings, Keyboard Shortcuts, Toggle Theme)
+  - Fuzzy match search filtering across all items
+  - Keyboard navigation: Arrow up/down, Enter to select, Escape to close
+  - File items show language badge and file path description
+  - Active item has emerald background tint, icon highlight, and green indicator bar
+  - Footer shows keyboard navigation hints
+  - Proper ARIA roles (dialog, listbox, option, group) for accessibility
+- Integrated into `/src/components/workspace.tsx`:
+  - Added import for CommandPalette and useCommandPalette
+  - Used ref pattern (commandPaletteRef) to avoid TDZ issues with useCallback functions defined later
+  - Registered callbacks: onOpenFile (selects file + switches to code tab), onNavigate (sets rightPanel/mobileTab), onAction (toggle theme), onToggleSidebar, onToggleFocusMode, onValidate, onExportZip, onDeploy, onOpenSettings, onShowShortcuts (dispatches keyboard event), onGoDashboard
+  - Rendered CommandPalette in both mobile and desktop layouts (near KeyboardShortcutHelp)
+- Fixed lint errors:
+  - Removed unused imports (Command, CommandInput, etc. from shadcn/ui/command)
+  - Replaced setState-in-effect patterns with event handler-based state updates (handleQueryChange resets activeIndex on query change)
+  - Used ref forwarding pattern for late-defined callbacks to avoid TDZ errors
+- Lint: ✅ Clean (0 errors, 0 warnings)
+
+Stage Summary:
+- Created professional command palette component at `/src/components/command-palette.tsx` (613 lines)
+- Exports: `CommandPalette` component and `useCommandPalette` hook
+- Features: Ctrl+K/Cmd+K trigger, 4 sections (Files/Actions/Navigation/Settings), fuzzy search, keyboard navigation, glass-morphism UI, emerald theme, Framer Motion animations, ARIA accessibility
+- Integrated into workspace.tsx for both mobile and desktop layouts
+- Lint: ✅ Clean | Dev Server: ✅ Compiling successfully
