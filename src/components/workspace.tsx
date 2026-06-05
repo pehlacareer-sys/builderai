@@ -21,7 +21,7 @@ import {
   PanelLeftClose, PanelLeft, Shield, Wifi,
   History, FolderTree,
   Settings2,
-  ChevronRight, Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2, Cpu,
+  ChevronRight, Rocket, Menu, X, Brain, Activity, Maximize2, Minimize2, Cpu, Terminal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -45,6 +45,8 @@ import { ActivityFeed, ActivityBell, generateMockActivities, type ActivityItem }
 import { DeploymentWizard } from '@/components/deployment-wizard'
 import { AgentStatusPanel } from '@/components/agent-status-panel'
 import { CollaborationPresence } from '@/components/collaboration-presence'
+import { TerminalPanel } from '@/components/terminal-panel'
+import { QuickActionsBar } from '@/components/quick-actions-bar'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -74,6 +76,7 @@ export function Workspace() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
   const [deployWizardOpen, setDeployWizardOpen] = useState(false)
+  const [quickActionsVisible, setQuickActionsVisible] = useState(false)
 
   // Memory count for tab indicator
   const [memoryCount, setMemoryCount] = useState(0)
@@ -173,9 +176,19 @@ export function Workspace() {
         description: 'Close dialogs / cancel edit',
         category: 'general',
         action: () => {
+          if (quickActionsVisible) setQuickActionsVisible(false)
           if (settingsOpen) setSettingsOpen(false)
           if (fileSheetOpen) setFileSheetOpen(false)
           if (menuSheetOpen) setMenuSheetOpen(false)
+        },
+      },
+      {
+        key: ' ',
+        ctrlKey: true,
+        description: 'Toggle quick actions bar',
+        category: 'general',
+        action: () => {
+          setQuickActionsVisible(prev => !prev)
         },
       },
     ],
@@ -560,13 +573,13 @@ export function Workspace() {
           {mobileTab === 'code' && (
             <div className="h-full flex flex-col">
               <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
-                <div className="border-b px-2 flex items-center tab-bar-gradient">
-                  <TabsList className="h-9 bg-transparent">
-                    <TabsTrigger value="code" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                <div className="border-b flex items-center tab-bar-gradient overflow-x-auto scrollbar-none">
+                  <TabsList className="h-9 bg-transparent min-w-0 flex-nowrap">
+                    <TabsTrigger value="code" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
                       <Code2 className="w-3 h-3 mr-1" />
                       Code
                     </TabsTrigger>
-                    <TabsTrigger value="validate" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
+                    <TabsTrigger value="validate" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
                       <Shield className="w-3 h-3 mr-1" />
                       Validate
                       {validationResults.filter(r => r.status === 'fail').length > 0 && (
@@ -575,27 +588,31 @@ export function Workspace() {
                         </Badge>
                       )}
                     </TabsTrigger>
-                    <TabsTrigger value="history" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                    <TabsTrigger value="history" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
                       <History className="w-3 h-3 mr-1" />
                       History
                     </TabsTrigger>
-                    <TabsTrigger value="memory" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
+                    <TabsTrigger value="memory" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
                       <Brain className="w-3 h-3 mr-1" />
                       Memory
                       {memoryCount > 0 && (
                         <span className="ml-1 w-2 h-2 rounded-full bg-sky-500 inline-block" />
                       )}
                     </TabsTrigger>
-                    <TabsTrigger value="analytics" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                    <TabsTrigger value="analytics" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
                       <Activity className="w-3 h-3 mr-1" />
                       Analytics
                     </TabsTrigger>
-                    <TabsTrigger value="status" className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
+                    <TabsTrigger value="status" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all relative">
                       <Cpu className="w-3 h-3 mr-1" />
                       Status
                       {isProcessing && (
                         <span className="ml-1 w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />
                       )}
+                    </TabsTrigger>
+                    <TabsTrigger value="terminal" className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all">
+                      <Terminal className="w-3 h-3 mr-1" />
+                      Terminal
                     </TabsTrigger>
                   </TabsList>
                 </div>
@@ -642,6 +659,9 @@ export function Workspace() {
                     agentPipeline={agentPipeline.map(a => ({ role: a.agent, status: a.status, content: a.message }))}
                     isProcessing={isProcessing}
                   />
+                </TabsContent>
+                <TabsContent value="terminal" className="flex-1 m-0 overflow-hidden">
+                  <TerminalPanel projectId={currentProject.id} files={files} />
                 </TabsContent>
               </Tabs>
               {/* Mobile Status Bar */}
@@ -855,25 +875,26 @@ export function Workspace() {
           {/* Right Panel */}
           <ResizablePanel defaultSize={focusMode ? 100 : 45} minSize={30}>
             <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
-              <div className="border-b px-2 flex items-center tab-bar-gradient">
-                <TabsList className="h-9 bg-transparent gap-0.5">
+              <div className="border-b flex items-center tab-bar-gradient">
+                <div className="flex-1 overflow-x-auto scrollbar-none">
+                <TabsList className="h-9 bg-transparent gap-0 min-w-0 flex-nowrap">
                 <TabsTrigger
                   value="code"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Code2 className="w-3 h-3 mr-1" />
                   Code
                 </TabsTrigger>
                 <TabsTrigger
                   value="preview"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Eye className="w-3 h-3 mr-1" />
                   Preview
                 </TabsTrigger>
                 <TabsTrigger
                   value="validate"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
                   <Shield className="w-3 h-3 mr-1" />
                   Validate
@@ -885,14 +906,14 @@ export function Workspace() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="history"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <History className="w-3 h-3 mr-1" />
                   History
                 </TabsTrigger>
                 <TabsTrigger
                   value="memory"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
                   <Brain className="w-3 h-3 mr-1" />
                   Memory
@@ -902,14 +923,14 @@ export function Workspace() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="analytics"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
                 >
                   <Activity className="w-3 h-3 mr-1" />
                   Analytics
                 </TabsTrigger>
                 <TabsTrigger
                   value="status"
-                  className="text-xs h-7 px-2.5 data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200 relative"
                 >
                   <Cpu className="w-3 h-3 mr-1" />
                   Status
@@ -917,16 +938,24 @@ export function Workspace() {
                     <span className="ml-1 w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />
                   )}
                 </TabsTrigger>
-              </TabsList>
-              {/* Focus mode toggle - outside TabsList to avoid roving tabindex conflicts */}
-              <button
-                onClick={() => setFocusMode(!focusMode)}
-                className={`ml-2 p-1 rounded transition-colors ${focusMode ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-                title={focusMode ? 'Exit focus mode' : 'Focus mode'}
-              >
-                {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-              </button>
-            </div>
+                <TabsTrigger
+                  value="terminal"
+                  className="text-xs h-7 px-1.5 flex-shrink-0 whitespace-nowrap data-[state=active]:bg-muted/60 data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all duration-200"
+                >
+                  <Terminal className="w-3 h-3 mr-1" />
+                  Terminal
+                </TabsTrigger>
+                </TabsList>
+                </div>
+                {/* Focus mode toggle - outside scrollable area to avoid roving tabindex conflicts */}
+                <button
+                  onClick={() => setFocusMode(!focusMode)}
+                  className={`ml-2 mr-2 p-1 rounded transition-colors flex-shrink-0 ${focusMode ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                  title={focusMode ? 'Exit focus mode' : 'Focus mode'}
+                >
+                  {focusMode ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                </button>
+              </div>
             <TabsContent value="code" className="flex-1 m-0 overflow-hidden">
               <CodeViewer
                 file={currentFile}
@@ -974,10 +1003,16 @@ export function Workspace() {
                 isProcessing={isProcessing}
               />
             </TabsContent>
+            <TabsContent value="terminal" className="flex-1 m-0 overflow-hidden">
+              <TerminalPanel projectId={currentProject.id} files={files} />
+            </TabsContent>
             </Tabs>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* Quick Actions Bar - above status bar */}
+      <QuickActionsBar visible={quickActionsVisible} onClose={() => setQuickActionsVisible(false)} />
 
       {/* Desktop Status Bar - theming based on project status */}
       <footer className={statusBarClassName}>

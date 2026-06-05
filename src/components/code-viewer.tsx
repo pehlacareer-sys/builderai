@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Copy, Check, FileCode, Pencil, X, Save, Loader2, ArrowLeft, Search, GitBranch, Replace, Hash } from 'lucide-react'
+import { Copy, Check, FileCode, Pencil, X, Save, Loader2, ArrowLeft, Search, GitBranch, Replace, Hash, Eye, Navigation, Wrench } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -233,6 +233,9 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
   const [editingLine, setEditingLine] = useState<number | null>(null)
   const [showGoToLine, setShowGoToLine] = useState(false)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; word: string } | null>(null)
+  const [hoveredLineNum, setHoveredLineNum] = useState<number | null>(null)
+  const [miniMapTooltip, setMiniMapTooltip] = useState<{ y: number; lineRange: string } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const codeRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -246,6 +249,9 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
     setShowGoToLine(false)
     setEditingLine(null)
     setCursorLine(null)
+    setContextMenu(null)
+    setHoveredLineNum(null)
+    setMiniMapTooltip(null)
   }, [file?.id])
 
   // When entering edit mode, populate textarea
@@ -645,8 +651,18 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
                     }}
                   />
                 )}
-                {/* Hovered line */}
-                {hoveredLine !== null && !highlightedLines.includes(hoveredLine) && hoveredLine !== cursorLine && (
+                {/* Hovered line number highlight */}
+                {hoveredLineNum !== null && !highlightedLines.includes(hoveredLineNum) && hoveredLineNum !== cursorLine && (
+                  <div
+                    className="absolute left-0 right-0 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.02]"
+                    style={{
+                      top: `${(hoveredLineNum - 1) * lineHeight}px`,
+                      height: `${lineHeight}px`,
+                    }}
+                  />
+                )}
+                {/* Hovered line (original) */}
+                {hoveredLine !== null && !highlightedLines.includes(hoveredLine) && hoveredLine !== cursorLine && hoveredLine !== hoveredLineNum && (
                   <div
                     className="absolute left-0 right-0 bg-muted/20"
                     style={{
@@ -674,13 +690,118 @@ export function CodeViewer({ file, onSave, hasUnsavedChanges }: CodeViewerProps)
                 color: '#6b7280',
                 userSelect: 'none',
                 fontSize: isMobile ? '10px' : undefined,
+                cursor: 'pointer',
               }}
               wrapLines
               wrapLongLines
               lineNumberContainerStyle={{}}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                const selection = window.getSelection()
+                const word = selection?.toString() || ''
+                setContextMenu({ x: e.clientX, y: e.clientY, word })
+              }}
+              onMouseLeave={() => setContextMenu(null)}
             >
               {file.content}
             </SyntaxHighlighter>
+
+            {/* Line number hover tracking */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ padding: isMobile ? '0.75rem' : '1rem' }}
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const y = e.clientY - rect.top - (isMobile ? 12 : 16)
+                const lineNum = Math.floor(y / lineHeight) + 1
+                if (lineNum >= 1 && lineNum <= lineCount) {
+                  setHoveredLineNum(lineNum)
+                }
+              }}
+              onMouseLeave={() => setHoveredLineNum(null)}
+            />
+
+            {/* Right-click Context Menu */}
+            {contextMenu && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute z-50 glass-effect rounded-lg py-1 shadow-lg min-w-[180px]"
+                style={{
+                  left: Math.min(contextMenu.x - (codeRef.current?.getBoundingClientRect().left || 0), 300),
+                  top: Math.min(contextMenu.y - (codeRef.current?.getBoundingClientRect().top || 0), 400),
+                }}
+              >
+                <button
+                  onClick={() => { toast.info('Go to Definition coming soon!'); setContextMenu(null) }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left"
+                >
+                  <Navigation className="w-3 h-3 text-emerald-500" />
+                  Go to Definition
+                </button>
+                <button
+                  onClick={() => { toast.info('Find References coming soon!'); setContextMenu(null) }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left"
+                >
+                  <Search className="w-3 h-3 text-teal-500" />
+                  Find References
+                </button>
+                <button
+                  onClick={() => { toast.info('Rename coming soon!'); setContextMenu(null) }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left"
+                >
+                  <Wrench className="w-3 h-3 text-amber-500" />
+                  Rename
+                </button>
+                {contextMenu.word && (
+                  <div className="px-3 py-1 border-t border-border/30 mt-1 pt-1.5">
+                    <span className="text-[10px] text-muted-foreground">Selected: </span>
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">{contextMenu.word}</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {/* Mini-map Tooltip */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-3 bg-muted/20 cursor-pointer z-20"
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const y = e.clientY - rect.top
+                const ratio = y / rect.height
+                const startLine = Math.max(1, Math.floor(ratio * lineCount))
+                const endLine = Math.min(lineCount, startLine + Math.ceil(rect.height / lineHeight))
+                setMiniMapTooltip({ y: e.clientY - (codeRef.current?.getBoundingClientRect().top || 0), lineRange: `Lines ${startLine}-${endLine}` })
+              }}
+              onMouseLeave={() => setMiniMapTooltip(null)}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const y = e.clientY - rect.top
+                const ratio = y / rect.height
+                const targetLine = Math.max(1, Math.floor(ratio * lineCount))
+                handleGoToLine(targetLine)
+              }}
+            >
+              {/* Mini-map content representation */}
+              <div className="absolute inset-0.5 space-y-px overflow-hidden opacity-30">
+                {Array.from({ length: Math.min(lineCount, 60) }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-px bg-muted-foreground/30 rounded"
+                    style={{ width: `${20 + Math.random() * 60}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+            {miniMapTooltip && (
+              <div
+                className="absolute right-4 z-30 px-2 py-1 rounded-md bg-popover text-popover-foreground border border-border/50 shadow-md text-[10px] font-mono pointer-events-none"
+                style={{ top: miniMapTooltip.y - 8 }}
+              >
+                {miniMapTooltip.lineRange}
+              </div>
+            )}
           </div>
 
           {/* Go To Line Dialog */}

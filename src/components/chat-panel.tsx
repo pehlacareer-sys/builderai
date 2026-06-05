@@ -26,6 +26,7 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { toast } from 'sonner'
 import { DiffDialog, FileDiff as FileDiffType } from '@/components/file-diff-viewer'
 import { ChatContextMenu } from '@/components/chat-context-menu'
+import { FileUploadZone } from '@/components/file-upload-zone'
 
 const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   planner: { icon: Brain, color: 'text-violet-500 bg-violet-50 dark:bg-violet-950/30', label: 'Planner' },
@@ -297,7 +298,7 @@ function MessageBubble({ message, isLastAiMessage, onRegenerate, onQuote, isGrou
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`flex gap-2.5 group relative ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'mt-0.5' : 'mt-3'} animate-message-pulse`}
+      className={`flex gap-2.5 group relative ${isUser ? 'flex-row-reverse' : ''} ${isGrouped ? 'mt-0.5 message-connector-line' : 'mt-3'} animate-message-pulse`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -728,9 +729,14 @@ export function ChatPanel() {
       <div className="border-b px-3 py-2 flex items-center justify-between bg-background/80 backdrop-blur-sm">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-          <span className="text-xs font-medium truncate">
-            {currentConversation?.title || 'New Chat'}
-          </span>
+          {/* Conversation Summary Chip - clickable to rename */}
+          <button
+            onClick={() => toast.info('Rename conversation coming soon!')}
+            className="text-xs font-medium truncate hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+            title="Click to rename conversation"
+          >
+            {currentConversation?.title || 'New Conversation'}
+          </button>
           <Badge variant="outline" className="text-[9px] px-1 flex-shrink-0 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 animate-breathing">
             <span className="relative flex h-1.5 w-1.5 mr-1">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -785,6 +791,7 @@ export function ChatPanel() {
       <PinnedMessagesSection pinnedMessages={pinnedMessages} onUnpin={handleUnpinMessage} />
 
       {/* Messages Area - with subtle gradient background */}
+      <FileUploadZone>
       <div className="relative flex-1 overflow-hidden">
         {/* Scroll progress indicator */}
         <div className="scroll-progress-bar" style={{ width: `${scrollProgress}%` }} />
@@ -944,6 +951,7 @@ export function ChatPanel() {
           )}
         </AnimatePresence>
       </div>
+      </FileUploadZone>
 
       {/* Agent Status Bar */}
       <AgentPipelineTimeline />
@@ -972,7 +980,7 @@ export function ChatPanel() {
                   : 'Describe what you want to build...'
               }
               disabled={isProcessing}
-              className="min-h-[40px] max-h-[100px] resize-none text-sm"
+              className={`min-h-[40px] max-h-[100px] resize-none text-sm ${isProcessing ? 'thinking-glow-border' : ''}`}
               rows={1}
             />
           </div>

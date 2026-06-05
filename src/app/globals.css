@@ -932,6 +932,157 @@ a:focus-visible {
   transform: rotate(-8deg) scale(1.1);
 }
 
+/* ─── Scrollbar Hide Utility ──────────────────────────────────────────── */
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Animated Border Rotate ────────────────────────────────────────────── */
+
+@keyframes border-rotate {
+  0% { --border-angle: 0deg; }
+  100% { --border-angle: 360deg; }
+}
+
+.animate-border-rotate {
+  position: relative;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.animate-border-rotate::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--border-angle, 0deg),
+    #10b981,
+    #14b8a6,
+    #06b6d4,
+    #14b8a6,
+    #10b981
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-rotate 4s linear infinite;
+  pointer-events: none;
+}
+
+.dark .animate-border-rotate::before {
+  background: conic-gradient(
+    from var(--border-angle, 0deg),
+    #34d399,
+    #2dd4bf,
+    #22d3ee,
+    #2dd4bf,
+    #34d399
+  );
+}
+
+/* ─── Glass Effect (refined glass-morphism) ────────────────────────────── */
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(16, 185, 129, 0.12);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass-effect {
+  background: rgba(24, 24, 27, 0.65);
+  border: 1px solid rgba(52, 211, 153, 0.1);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Badge Shimmer Effect ──────────────────────────────────────────────── */
+
+@keyframes badge-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-badge-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-badge-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(16, 185, 129, 0.15) 25%,
+    rgba(20, 184, 166, 0.2) 50%,
+    rgba(16, 185, 129, 0.15) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: badge-shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.dark .animate-badge-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(52, 211, 153, 0.12) 25%,
+    rgba(45, 212, 191, 0.18) 50%,
+    rgba(52, 211, 153, 0.12) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* ─── Thinking Input Border (subtle animated gradient) ────────────────── */
+
+@keyframes thinking-border {
+  0% { border-color: rgba(16, 185, 129, 0.2); box-shadow: 0 0 4px rgba(16, 185, 129, 0.05); }
+  33% { border-color: rgba(20, 184, 166, 0.4); box-shadow: 0 0 8px rgba(20, 184, 166, 0.1); }
+  66% { border-color: rgba(6, 182, 212, 0.3); box-shadow: 0 0 6px rgba(6, 182, 212, 0.08); }
+  100% { border-color: rgba(16, 185, 129, 0.2); box-shadow: 0 0 4px rgba(16, 185, 129, 0.05); }
+}
+
+.thinking-glow-border {
+  animation: thinking-border 2s ease-in-out infinite;
+}
+
+/* ─── Message Group Connector Line ──────────────────────────────────────── */
+
+.message-connector-line {
+  position: relative;
+}
+
+.message-connector-line::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: -4px;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, rgba(16, 185, 129, 0.15), transparent);
+}
+
+.dark .message-connector-line::before {
+  background: linear-gradient(to bottom, rgba(52, 211, 153, 0.1), transparent);
+}
+
 /* ─── Reduced Motion additions ──────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -953,7 +1104,10 @@ a:focus-visible {
   .animate-message-pulse,
   .edit-glow-border,
   .gradient-border::before,
-  .stat-shimmer {
+  .stat-shimmer,
+  .animate-border-rotate::before,
+  .thinking-glow-border,
+  .animate-badge-shimmer::after {
     animation: none !important;
   }
 
@@ -962,7 +1116,8 @@ a:focus-visible {
   }
 
   .gradient-border-hover::before,
-  .gradient-border::before {
+  .gradient-border::before,
+  .animate-border-rotate::before {
     transition: none;
     animation: none !important;
   }

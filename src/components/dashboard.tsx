@@ -22,7 +22,7 @@ import {
   Globe, Zap, LogOut, Trash2, Sparkles, Layers, Rocket, Bot,
   FileCode, Search, LayoutGrid, List, Download,
   ChevronRight, Upload, BookOpen, Activity, CheckCircle2,
-  MessageSquare, DownloadCloud
+  MessageSquare, DownloadCloud, Eye, Code2, Shield, X
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
@@ -130,7 +130,9 @@ function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
     const defaults: Record<string, boolean> = {
       'create-project': projectCount > 0,
       'chat-ai': false,
-      'export-code': false,
+      'explore-viewer': false,
+      'run-validation': false,
+      'deploy-project': false,
     }
     if (typeof window === 'undefined') return defaults
     try {
@@ -160,10 +162,15 @@ function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
   const items = [
     { key: 'create-project', label: 'Create your first project', icon: Plus, desc: 'Start a new AI-powered project' },
     { key: 'chat-ai', label: 'Chat with AI assistant', icon: MessageSquare, desc: 'Describe what you want to build' },
-    { key: 'export-code', label: 'Export your code', icon: DownloadCloud, desc: 'Download as ZIP file' },
+    { key: 'explore-viewer', label: 'Explore the code viewer', icon: Eye, desc: 'View and edit generated files' },
+    { key: 'run-validation', label: 'Run validation checks', icon: Shield, desc: 'Check code quality and health' },
+    { key: 'deploy-project', label: 'Deploy your project', icon: Rocket, desc: 'Ship to production with one click' },
   ]
 
   if (allDone) return null
+
+  const completedCount = Object.values(checkedItems).filter(Boolean).length
+  const progressPercent = (completedCount / items.length) * 100
 
   return (
     <motion.div
@@ -172,11 +179,23 @@ function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
       transition={{ delay: 0.25 }}
       className="mb-6 sm:mb-8"
     >
-      <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-        <Rocket className="w-3.5 h-3.5 text-emerald-500" />
-        Getting Started
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+          <Rocket className="w-3.5 h-3.5 text-emerald-500" />
+          Getting Started
+        </h2>
+        <span className="text-xs text-muted-foreground">{Math.round(progressPercent)}% complete</span>
+      </div>
+      {/* Progress bar */}
+      <div className="mb-3 h-1.5 rounded-full bg-muted overflow-hidden">
+        <motion.div
+          className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${progressPercent}%` }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
         {items.map((item, i) => {
           const isDone = checkedItems[item.key]
           return (
@@ -206,7 +225,7 @@ function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
                 )}
               </div>
               <div className="min-w-0">
-                <div className={`text-xs font-semibold ${isDone ? 'line-through text-muted-foreground' : ''}`}>
+                <div className={`text-xs font-semibold transition-colors ${isDone ? 'line-through text-emerald-600 dark:text-emerald-400' : ''}`}>
                   {item.label}
                 </div>
                 <div className="text-[10px] text-muted-foreground">{item.desc}</div>
@@ -214,20 +233,6 @@ function GettingStartedChecklist({ projectCount }: { projectCount: number }) {
             </motion.button>
           )
         })}
-      </div>
-      {/* Progress bar */}
-      <div className="mt-2 flex items-center gap-2">
-        <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${(Object.values(checkedItems).filter(Boolean).length / items.length) * 100}%` }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-          />
-        </div>
-        <span className="text-[10px] text-muted-foreground">
-          {Object.values(checkedItems).filter(Boolean).length}/{items.length}
-        </span>
       </div>
     </motion.div>
   )
@@ -301,6 +306,21 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   const [showTemplates, setShowTemplates] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Welcome banner dismissed state (localStorage)
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      return !localStorage.getItem('builderai-welcome-dismissed')
+    } catch { return true }
+  })
+
+  const handleDismissBanner = useCallback(() => {
+    setShowWelcomeBanner(false)
+    try {
+      localStorage.setItem('builderai-welcome-dismissed', 'true')
+    } catch {}
+  }, [])
 
   // Project reorder state (localStorage)
   const [projectOrder, setProjectOrder] = useState<string[]>(() => {
@@ -508,6 +528,33 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
           <DashboardSkeletonShimmer />
         ) : (
           <>
+            {/* Welcome Banner */}
+            {showWelcomeBanner && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-6 sm:mb-8 relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 p-5 sm:p-6 text-white"
+              >
+                <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
+                <div className="relative z-10 flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold">Welcome to BuilderAI</h2>
+                    <p className="text-sm text-white/80 mt-1 max-w-lg">
+                      Build websites with AI agents. Describe your vision, and watch it come to life with plan, code, review, and deploy — all automated.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDismissBanner}
+                    className="p-1.5 rounded-lg hover:bg-white/20 transition-colors flex-shrink-0"
+                    title="Dismiss banner"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Hero Section with Gradient Background + Particle Grid */}
             <div className="mb-6 sm:mb-8 relative">
               <div className="absolute -top-8 -left-8 w-64 h-64 bg-emerald-500/5 dark:bg-emerald-500/3 rounded-full blur-3xl pointer-events-none animate-parallax-blob" />
@@ -568,8 +615,12 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   whileHover={{ scale: 1.03, y: -2 }}
                   className="gradient-border-hover rounded-lg"
                 >
-                  <Card className={`hover:shadow-md hover:bg-gradient-to-br hover:from-card hover:to-emerald-50/30 dark:hover:to-emerald-950/10 transition-all border ${stat.border} rounded-lg`}>
-                    <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
+                  <Card className={`hover:shadow-md hover:bg-gradient-to-br hover:from-card hover:to-emerald-50/30 dark:hover:to-emerald-950/10 transition-all border ${stat.border} rounded-lg overflow-hidden relative`}>
+                    <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3 relative">
+                      {/* Icon watermark background */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                        <stat.icon className="w-16 h-16 sm:w-24 sm:h-24 opacity-[0.04] text-foreground" />
+                      </div>
                       <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl ${stat.color} flex-shrink-0`}>
                         <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                       </div>
@@ -587,6 +638,39 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
 
             {/* Getting Started Checklist */}
             <GettingStartedChecklist projectCount={projects.length} />
+
+            {/* Recently Viewed Projects */}
+            {projects.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.28 }}
+                className="mb-6 sm:mb-8"
+              >
+                <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                  <Eye className="w-3.5 h-3.5 text-emerald-500" />
+                  Recently Viewed
+                </h2>
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                  {sortedProjects.slice(0, 5).map((project) => {
+                    const StatusIcon = STATUS_ICONS[project.status] || FileCode
+                    return (
+                      <button
+                        key={project.id}
+                        onClick={() => selectProject(project.id)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border/50 bg-card hover:border-emerald-200 dark:hover:border-emerald-800 hover:shadow-sm transition-all whitespace-nowrap flex-shrink-0"
+                      >
+                        <StatusIcon className={`w-3 h-3 ${STATUS_COLORS[project.status]?.split(' ')[0] || 'text-muted-foreground'}`} />
+                        <span className="text-xs font-medium">{project.name}</span>
+                        <Badge variant="secondary" className={`text-[8px] px-1 py-0 h-4 ${STATUS_COLORS[project.status] || ''}`}>
+                          {STATUS_LABELS[project.status] || project.status}
+                        </Badge>
+                      </button>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
 
             {/* Quick Actions */}
             <motion.div
@@ -729,7 +813,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-center py-10 sm:py-12 relative"
+                className="text-center py-10 sm:py-16 relative"
               >
                 {/* Animated CSS shapes background */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -739,20 +823,32 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   <div className="absolute bottom-8 right-[30%] w-10 h-10 rounded-lg border-2 border-violet-200/30 dark:border-violet-700/20 -rotate-12 animate-float" style={{ animationDelay: '1.5s' }} />
                 </div>
                 <div className="relative z-10">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 flex items-center justify-center mx-auto mb-3 sm:mb-4 animate-float ring-1 ring-emerald-500/10">
-                    <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-500" />
+                  {/* Pulsing code icon in large circle */}
+                  <div className="relative w-24 h-24 sm:w-32 sm:h-32 mx-auto mb-5 sm:mb-6">
+                    <div className="absolute inset-0 rounded-full bg-emerald-100 dark:bg-emerald-950/30 animate-pulse opacity-50" />
+                    <div className="absolute inset-2 rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 ring-1 ring-emerald-500/20 flex items-center justify-center">
+                      <FileCode className="w-10 h-10 sm:w-14 sm:h-14 text-emerald-500 animate-pulse" />
+                    </div>
                   </div>
-                  <h3 className="text-base sm:text-lg font-semibold">No projects yet</h3>
-                  <p className="text-sm text-muted-foreground mt-1 mb-4">
-                    Create your first project to start building with AI
+                  <h3 className="text-lg sm:text-xl font-bold">Start your first project</h3>
+                  <p className="text-sm text-muted-foreground mt-2 mb-5 max-w-xs mx-auto leading-relaxed">
+                    Describe what you want to build and our AI agents will generate the code for you.
                   </p>
                   <Button
                     onClick={() => setShowCreate(true)}
-                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px]"
+                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white min-h-[44px] shadow-lg shadow-emerald-500/25"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Project
+                    Create Project
                   </Button>
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setShowTemplates(true)}
+                      className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline underline-offset-2 transition-colors"
+                    >
+                      Or try a template
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             ) : (
@@ -906,8 +1002,18 @@ function ProjectCard({ project, index, onSelect, onDelete, onDeploy, draggedId, 
         className="cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] gradient-border-hover"
         onClick={() => onSelect(project.id)}
       >
-        {/* Gradient accent on top */}
-        <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+        {/* Gradient accent on top - color based on status */}
+        <div className={`h-1.5 transition-opacity ${
+          project.status === 'draft'
+            ? 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700 opacity-60 group-hover:opacity-100'
+            : project.status === 'building'
+            ? 'bg-gradient-to-r from-amber-400 to-orange-500 opacity-70 group-hover:opacity-100'
+            : project.status === 'ready'
+            ? 'bg-gradient-to-r from-emerald-400 to-teal-500 opacity-70 group-hover:opacity-100'
+            : project.status === 'deployed'
+            ? 'bg-gradient-to-r from-sky-400 to-blue-500 opacity-70 group-hover:opacity-100'
+            : 'bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 group-hover:opacity-100'
+        }`} />
         <CardHeader className="pb-1.5 sm:pb-2 p-3 sm:p-6">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">

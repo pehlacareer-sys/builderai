@@ -359,7 +359,7 @@ export function AuthScreen() {
           </div>
 
           {/* Trust Metrics with animated counters */}
-          <div className="flex items-center gap-8 mb-10">
+          <div className="flex items-center gap-8 mb-6">
             {TRUST_METRICS.map((metric) => (
               <div key={metric.label}>
                 <div className="text-2xl font-bold">
@@ -369,6 +369,28 @@ export function AuthScreen() {
               </div>
             ))}
           </div>
+
+          {/* Trusted By Logos Bar */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="mb-10"
+          >
+            <div className="border-t border-border/30 pt-4">
+              <p className="text-xs text-muted-foreground/40 font-semibold tracking-wider uppercase mb-3 text-center">Trusted by</p>
+              <div className="flex items-center justify-center gap-6 flex-wrap">
+                {['Acme Corp', 'TechFlow', 'DataVerse', 'CloudNine', 'StartupX'].map((name) => (
+                  <div key={name} className="flex items-center gap-1.5 opacity-30 hover:opacity-50 transition-opacity">
+                    <div className="w-5 h-5 rounded bg-muted-foreground/20 flex items-center justify-center">
+                      <span className="text-[8px] font-bold text-muted-foreground/60">{name.charAt(0)}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground/40 font-semibold tracking-wider uppercase">{name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
 
           {/* Features Showcase Carousel */}
           <div className="mb-8">
@@ -478,25 +500,26 @@ export function AuthScreen() {
             <ThemeToggle />
           </div>
 
-          {/* AI Ready Badge */}
+          {/* AI Ready Badge with shimmer */}
           <div className="flex justify-center mb-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 animate-pulsing-ring"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 animate-pulsing-ring animate-badge-shimmer"
             >
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
-              <span className="text-xs font-medium">AI is ready</span>
-              <Bot className="w-3 h-3" />
+              <span className="text-sm font-semibold">AI is ready</span>
+              <Bot className="w-3.5 h-3.5" />
             </motion.div>
           </div>
 
-          {/* Auth Card */}
-          <Card className="border border-border/50 bg-card/80 backdrop-blur-xl shadow-2xl shadow-black/5 dark:shadow-black/20">
+          {/* Auth Card with animated gradient border */}
+          <div className="animate-border-rotate rounded-lg">
+          <Card className="border-0 bg-card/80 backdrop-blur-xl shadow-2xl shadow-black/5 dark:shadow-black/20">
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <CardHeader className="pb-4 pt-6 px-6">
                 <div className="flex items-center justify-between mb-4">
@@ -760,6 +783,7 @@ export function AuthScreen() {
               </CardContent>
             </Tabs>
           </Card>
+          </div>
 
           {/* Bottom features (mobile visible) */}
           <div className="mt-6 grid grid-cols-3 gap-3">
