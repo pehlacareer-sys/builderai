@@ -41,6 +41,8 @@ import { ValidationPanel } from '@/components/validation-panel'
 import { PreviewPanel } from '@/components/preview-panel'
 import { VersionHistoryPanel, type VersionData } from '@/components/version-history-panel'
 import { getLanguageFromPath } from '@/lib/file-utils'
+import { ActivityFeed, ActivityBell, generateMockActivities, type ActivityItem } from '@/components/activity-feed'
+import { DeploymentWizard } from '@/components/deployment-wizard'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -69,6 +71,7 @@ export function Workspace() {
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
+  const [deployWizardOpen, setDeployWizardOpen] = useState(false)
 
   // Memory count for tab indicator
   const [memoryCount, setMemoryCount] = useState(0)
@@ -348,7 +351,7 @@ export function Workspace() {
           .catch(() => toast.error('Failed to export project'))
       }
     },
-    onDeploy: () => toast.info('Deployment coming soon!'),
+    onDeploy: () => setDeployWizardOpen(true),
     onOpenSettings: () => setSettingsOpen(true),
     onShowShortcuts: () => {
       window.dispatchEvent(new KeyboardEvent('keydown', {
@@ -400,6 +403,7 @@ export function Workspace() {
           >
             <Settings2 className="w-4 h-4 text-muted-foreground" />
           </Button>
+          <ActivityBell activities={generateMockActivities(projects)} />
           <NotificationCenter />
         </header>
 
@@ -452,7 +456,7 @@ export function Workspace() {
                 className="justify-start h-11 min-h-[44px] text-sm"
                 onClick={() => {
                   setMenuSheetOpen(false)
-                  toast.info('Deployment coming soon!')
+                  setDeployWizardOpen(true)
                 }}
               >
                 <Rocket className="w-4 h-4 mr-2" />
@@ -654,6 +658,17 @@ export function Workspace() {
           onOpenChange={setCommandPaletteOpen}
           actions={commandActions}
         />
+
+        {/* Deployment Wizard Dialog */}
+        {currentProject && (
+          <DeploymentWizard
+            open={deployWizardOpen}
+            onOpenChange={setDeployWizardOpen}
+            projectName={currentProject.name}
+            projectId={currentProject.id}
+            files={files}
+          />
+        )}
       </div>
     )
   }
@@ -707,12 +722,13 @@ export function Workspace() {
             icon={Rocket}
             size="sm"
             className="h-7 text-xs"
-            onClick={() => toast.info('Deployment coming soon!')}
+            onClick={() => setDeployWizardOpen(true)}
           >
             <span className="hidden sm:inline">Deploy</span>
           </BrandButton>
           <Separator orientation="vertical" className="h-5" />
           <NotificationCenter />
+          <ActivityBell activities={generateMockActivities(projects)} />
           <UserProfileDropdown
             user={user}
             projectCount={projects.length}
@@ -746,6 +762,12 @@ export function Workspace() {
 
       {/* Main Content */}
       <div className={`flex-1 flex overflow-hidden ${focusMode ? 'relative' : ''}`}>
+        {/* Focus mode vignette overlay */}
+        {focusMode && (
+          <div className="absolute inset-0 pointer-events-none z-50" style={{
+            boxShadow: 'inset 0 0 150px rgba(0,0,0,0.15), inset 0 0 60px rgba(16,185,129,0.05)'
+          }} />
+        )}
         {/* File Tree Sidebar - hidden on tablet when collapsed or focus mode */}
         {!focusMode && (
           <>
@@ -792,16 +814,21 @@ export function Workspace() {
               <ResizablePanel defaultSize={55} minSize={30}>
                 <ChatPanel />
               </ResizablePanel>
-              <ResizableHandle withHandle className="bg-border/50 hover:bg-emerald-500/20 transition-colors group/resizable-handle" />
+              <ResizableHandle withHandle className="bg-border/50 hover:bg-emerald-500/20 hover:shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all group/resizable-handle">
+                <div className="w-1 h-6 flex flex-col items-center justify-center gap-0.5">
+                  {[0,1,2,3,4].map(i => (
+                    <div key={i} className="w-0.5 h-0.5 rounded-full bg-muted-foreground/30 group-hover/resizable-handle:bg-emerald-500/60 transition-colors" />
+                  ))}
+                </div>
+              </ResizableHandle>
             </>
           )}
 
           {/* Right Panel */}
           <ResizablePanel defaultSize={focusMode ? 100 : 45} minSize={30}>
-            <div className="h-full flex flex-col">
-          <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
-            <div className="border-b px-2 flex items-center tab-bar-gradient">
-              <TabsList className="h-9 bg-transparent">
+            <Tabs value={rightPanel} onValueChange={setRightPanel} className="h-full flex flex-col">
+              <div className="border-b px-2 flex items-center tab-bar-gradient">
+                <TabsList className="h-9 bg-transparent">
                 <TabsTrigger
                   value="code"
                   className="text-xs h-7 data-[state=active]:bg-muted data-[state=active]:border-b-2 data-[state=active]:border-emerald-500 data-[state=active]:rounded-b-none transition-all"
@@ -914,14 +941,18 @@ export function Workspace() {
                 )}
               </motion.div>
             </AnimatePresence>
-          </Tabs>
-            </div>
+            </Tabs>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
 
-      {/* Desktop Status Bar */}
-      <footer className="border-t h-6 px-3 flex items-center justify-between text-[10px] text-muted-foreground bg-muted/30 flex-shrink-0">
+      {/* Desktop Status Bar - theming based on project status */}
+      <footer className={`border-t h-6 px-3 flex items-center justify-between text-[10px] flex-shrink-0 transition-colors duration-500 ${
+        currentProject.status === 'building' ? 'bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400' :
+        currentProject.status === 'ready' ? 'bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400' :
+        currentProject.status === 'deployed' ? 'bg-sky-50/50 dark:bg-sky-950/20 text-sky-700 dark:text-sky-400' :
+        'bg-muted/30 text-muted-foreground'
+      }`>
         <div className="flex items-center gap-3">
           {currentFile && (
             <>
@@ -958,6 +989,17 @@ export function Workspace() {
         onOpenChange={setCommandPaletteOpen}
         actions={commandActions}
       />
+
+      {/* Deployment Wizard Dialog */}
+      {currentProject && (
+        <DeploymentWizard
+          open={deployWizardOpen}
+          onOpenChange={setDeployWizardOpen}
+          projectName={currentProject.name}
+          projectId={currentProject.id}
+          files={files}
+        />
+      )}
     </div>
   )
 }

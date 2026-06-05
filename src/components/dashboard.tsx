@@ -27,6 +27,9 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { TemplatesMarketplace, type Template } from '@/components/templates-marketplace'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ActivityFeed, generateMockActivities, type ActivityItem } from '@/components/activity-feed'
+import { DeploymentWizard } from '@/components/deployment-wizard'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -296,6 +299,8 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   const [loading, setLoading] = useState(true)
   const [showTemplates, setShowTemplates] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [deployWizardOpen, setDeployWizardOpen] = useState(false)
+  const [deployProject, setDeployProject] = useState<{ name: string; id: string; files?: any[] } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Project reorder state (localStorage)
@@ -414,14 +419,15 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
 
   const totalFiles = projects.reduce((sum, p) => sum + (p.files?.length || 0), 0)
 
-  // ─── Recent Activity: Last 5 actions ────────────────────────────────
-  const recentActivity = projects
-    .flatMap(p => [
-      { id: p.id, name: p.name, action: 'created', date: p.createdAt, status: p.status },
-      { id: p.id, name: p.name, action: 'updated', date: p.updatedAt, status: p.status },
-    ])
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5)
+  // ─── Activity Feed: Generate from projects ────────────────────────
+  const activityItems: ActivityItem[] = useMemo(() => generateMockActivities(projects), [projects])
+
+  // ─── Handle Deploy from card ──────────────────────────────────────────
+  const handleDeployProject = useCallback((e: React.MouseEvent, project: any) => {
+    e.stopPropagation()
+    setDeployProject({ name: project.name, id: project.id, files: project.files })
+    setDeployWizardOpen(true)
+  }, [])
 
   return (
     <div className="min-h-screen flex flex-col bg-background page-transition relative">
@@ -559,7 +565,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   whileHover={{ scale: 1.03, y: -2 }}
                   className="gradient-border-hover rounded-lg"
                 >
-                  <Card className={`hover:shadow-md transition-all border ${stat.border} rounded-lg`}>
+                  <Card className={`hover:shadow-md hover:bg-gradient-to-br hover:from-card hover:to-emerald-50/30 dark:hover:to-emerald-950/10 transition-all border ${stat.border} rounded-lg`}>
                     <CardContent className="p-2.5 sm:p-4 flex items-center gap-2 sm:gap-3">
                       <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl ${stat.color} flex-shrink-0`}>
                         <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
@@ -656,50 +662,21 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
               </motion.div>
             )}
 
-            {/* Recent Activity Feed (inline for non-xl) */}
-            {projects.length > 3 && recentActivity.length > 0 && (
+            {/* Activity Feed (inline for non-xl) */}
+            {projects.length > 0 && activityItems.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.35 }}
                 className="mb-6 sm:mb-8 xl:hidden"
               >
-                <h2 className="text-sm font-semibold text-muted-foreground mb-3">Recent Activity</h2>
-                <div className="rounded-lg border bg-card">
-                  <div className="divide-y">
-                    {recentActivity.map((activity, i) => {
-                      const Icon = getActivityIcon(activity.action)
-                      return (
-                        <motion.div
-                          key={`${activity.id}-${activity.action}-${i}`}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors"
-                        >
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            activity.action === 'created'
-                              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'
-                              : activity.action === 'deployed'
-                              ? 'bg-sky-50 text-sky-600 dark:bg-sky-950/30 dark:text-sky-400'
-                              : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400'
-                          }`}>
-                            <Icon className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs truncate">
-                              <span className="font-medium">{activity.name}</span>
-                              <span className="text-muted-foreground"> — {activity.action}</span>
-                            </p>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                            {getRelativeTime(activity.date)}
-                          </span>
-                        </motion.div>
-                      )
-                    })}
-                  </div>
-                </div>
+                <ActivityFeed
+                  activities={activityItems}
+                  variant="inline"
+                  maxVisible={5}
+                  onProjectClick={selectProject}
+                  showFilters={true}
+                />
               </motion.div>
             )}
 
@@ -715,7 +692,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                       placeholder="Search projects..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="h-9 sm:h-8 pl-8 text-xs sm:text-sm min-h-[44px] sm:min-h-0"
+                      className="h-9 sm:h-8 pl-8 text-xs sm:text-sm min-h-[44px] sm:min-h-0 transition-all duration-300 focus:w-full focus:sm:max-w-sm"
                     />
                   </div>
                   <div className="flex border rounded-md overflow-hidden flex-shrink-0">
@@ -783,7 +760,7 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     <AnimatePresence>
                       {sortedProjects.map((project, i) => (
-                        <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} draggedId={draggedId} dragOverId={dragOverId} onDragStart={handleDragStart} onDragOver={handleDragOverCard} onDragEnd={handleDragEnd} />
+                        <ProjectCard key={project.id} project={project} index={i} onSelect={selectProject} onDelete={handleDelete} onDeploy={handleDeployProject} draggedId={draggedId} dragOverId={dragOverId} onDragStart={handleDragStart} onDragOver={handleDragOverCard} onDragEnd={handleDragEnd} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -802,13 +779,24 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
         )}
           </div>
 
-          {/* Right sidebar - Recent Activity Timeline (desktop XL only) */}
-          <RecentActivityTimeline activities={recentActivity} />
+          {/* Right sidebar - Activity Feed Widget (desktop XL only) */}
+          <div className="hidden xl:block w-72 flex-shrink-0">
+            <div className="sticky top-20">
+              <ActivityFeed
+                activities={activityItems}
+                variant="widget"
+                maxVisible={15}
+                onProjectClick={selectProject}
+                showFilters={true}
+              />
+            </div>
+          </div>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t mt-auto">
+      {/* Footer with gradient separator */}
+      <footer className="mt-auto relative">
+        <div className="h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Zap className="w-3 h-3 text-emerald-500" />
@@ -874,15 +862,26 @@ export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
         onOpenChange={setShowTemplates}
         onUseTemplate={handleUseTemplate}
       />
+      {/* Deployment Wizard Dialog */}
+      {deployProject && (
+        <DeploymentWizard
+          open={deployWizardOpen}
+          onOpenChange={setDeployWizardOpen}
+          projectName={deployProject.name}
+          projectId={deployProject.id}
+          files={deployProject.files}
+        />
+      )}
     </div>
   )
 }
 
-function ProjectCard({ project, index, onSelect, onDelete, draggedId, dragOverId, onDragStart, onDragOver, onDragEnd }: {
+function ProjectCard({ project, index, onSelect, onDelete, onDeploy, draggedId, dragOverId, onDragStart, onDragOver, onDragEnd }: {
   project: any
   index: number
   onSelect: (id: string) => void
   onDelete: (e: React.MouseEvent, id: string) => Promise<void>
+  onDeploy: (e: React.MouseEvent, project: any) => void
   draggedId: string | null
   dragOverId: string | null
   onDragStart: (id: string) => void
@@ -927,9 +926,22 @@ function ProjectCard({ project, index, onSelect, onDelete, draggedId, dragOverId
                 </Badge>
               )}
             </div>
-            <Badge variant="secondary" className={`text-[9px] sm:text-[10px] px-1 sm:px-1.5 ${STATUS_COLORS[project.status] || STATUS_COLORS.draft}`}>
-              {STATUS_LABELS[project.status] || project.status}
-            </Badge>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className={`text-[9px] sm:text-[10px] px-1 sm:px-1.5 cursor-help ${STATUS_COLORS[project.status] || STATUS_COLORS.draft}`}>
+                    {STATUS_LABELS[project.status] || project.status}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-[10px]">
+                  {project.status === 'draft' ? 'Project is in draft mode - start chatting to generate code' :
+                   project.status === 'building' ? 'AI agents are currently generating your project' :
+                   project.status === 'ready' ? 'Project has been generated and is ready to use' :
+                   project.status === 'deployed' ? 'Project has been deployed to production' :
+                   'Unknown project status'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <CardDescription className="line-clamp-2 ml-7 sm:ml-10 text-xs sm:text-sm">
             {project.description || 'No description'}
@@ -961,6 +973,15 @@ function ProjectCard({ project, index, onSelect, onDelete, draggedId, dragOverId
                 title="Export as ZIP"
               >
                 <Download className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 sm:h-7 sm:w-7 min-h-[44px] sm:min-h-0 opacity-0 group-hover:opacity-100 transition-opacity text-emerald-600 hover:text-emerald-700"
+                onClick={(e) => onDeploy(e, project)}
+                title="Deploy project"
+              >
+                <Rocket className="w-3.5 h-3.5" />
               </Button>
               <Button
                 variant="ghost"
