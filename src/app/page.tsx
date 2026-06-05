@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, lazy } from 'react'
+import { Suspense, useEffect, useState, lazy, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { ErrorBoundary } from '@/components/error-boundary'
@@ -9,6 +9,7 @@ import {
   WorkspaceSkeleton,
   AppLoadingSkeleton,
 } from '@/components/loading-skeletons'
+import { OnboardingTour, resetOnboarding } from '@/components/onboarding-tour'
 import { Loader2, Zap } from 'lucide-react'
 
 // Lazy load heavy components for better perceived performance
@@ -38,6 +39,23 @@ export default function Home() {
   const { isAuthenticated, initialize } = useAuthStore()
   const { currentProject, loadProjects } = useProjectStore()
   const [initializing, setInitializing] = useState(true)
+  const [forceTour, setForceTour] = useState(false)
+
+  const handleShowTour = useCallback(() => {
+    resetOnboarding()
+    setForceTour(true)
+  }, [])
+
+  const handleTourComplete = useCallback(() => {
+    setForceTour(false)
+  }, [])
+
+  // Listen for custom event from workspace to trigger tour
+  useEffect(() => {
+    const handler = () => handleShowTour()
+    window.addEventListener('show-onboarding-tour', handler)
+    return () => window.removeEventListener('show-onboarding-tour', handler)
+  }, [handleShowTour])
 
   useEffect(() => {
     const init = async () => {
@@ -85,8 +103,11 @@ export default function Home() {
         </Suspense>
       ) : (
         <Suspense fallback={<DashboardFallback />}>
-          <Dashboard />
+          <Dashboard onShowTour={handleShowTour} />
         </Suspense>
+      )}
+      {isAuthenticated && (
+        <OnboardingTour forceOpen={forceTour} onComplete={handleTourComplete} />
       )}
     </ErrorBoundary>
   )

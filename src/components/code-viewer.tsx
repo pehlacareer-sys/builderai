@@ -12,21 +12,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { toast } from 'sonner'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { motion, AnimatePresence } from 'framer-motion'
-
-const LANGUAGE_MAP: Record<string, string> = {
-  typescript: 'typescript',
-  javascript: 'javascript',
-  jsx: 'jsx',
-  tsx: 'tsx',
-  css: 'css',
-  json: 'json',
-  html: 'html',
-  markdown: 'markdown',
-  yaml: 'yaml',
-  prisma: 'typescript',
-  sql: 'sql',
-  plaintext: 'text',
-}
+import { getLanguageFromPath } from '@/lib/file-utils'
 
 const LANGUAGE_ICON_MAP: Record<string, { icon: React.ElementType; color: string }> = {
   typescript: { icon: FileCode, color: 'text-sky-500' },
@@ -40,11 +26,6 @@ const LANGUAGE_ICON_MAP: Record<string, { icon: React.ElementType; color: string
   yaml: { icon: FileCode, color: 'text-rose-500' },
   sql: { icon: FileCode, color: 'text-teal-500' },
   text: { icon: FileCode, color: 'text-muted-foreground' },
-}
-
-function getLanguageFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase() || ''
-  return LANGUAGE_MAP[ext] || 'text'
 }
 
 // ─── Breadcrumb Path Component ──────────────────────────────────────────────

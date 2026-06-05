@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useProjectStore } from '@/stores/project-store'
 import { Button } from '@/components/ui/button'
+import { BrandButton } from '@/components/ui/brand-button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -115,7 +116,7 @@ function DashboardSkeletonShimmer() {
   )
 }
 
-export function Dashboard() {
+export function Dashboard({ onShowTour }: { onShowTour?: () => void }) {
   const { user, logout } = useAuthStore()
   const { projects, loadProjects, createProject, selectProject, deleteProject } = useProjectStore()
   const [showCreate, setShowCreate] = useState(false)
@@ -201,6 +202,11 @@ export function Dashboard() {
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
+            {onShowTour && (
+              <Button variant="ghost" size="icon" onClick={onShowTour} title="Show Tour" className="h-8 w-8 sm:h-9 sm:w-9 min-h-[44px] sm:min-h-0">
+                <BookOpen className="w-4 h-4" />
+              </Button>
+            )}
             <Separator className="h-5 mx-0.5 sm:mx-1" />
             <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
               <AvatarFallback className="bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] sm:text-xs font-semibold">
@@ -241,13 +247,13 @@ export function Dashboard() {
                 {/* New Project button with animated gradient border */}
                 <div className="relative group">
                   <div className="absolute -inset-0.5 gradient-border-emerald rounded-lg opacity-50 group-hover:opacity-100 blur-sm transition-opacity" />
-                  <Button
+                  <BrandButton
+                    icon={Plus}
                     onClick={() => setShowCreate(true)}
-                    className="relative bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 transition-all hover:shadow-emerald-500/40 min-h-[44px] hover:scale-[1.02] active:scale-[0.98]"
+                    className="relative shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 min-h-[44px]"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
                     New Project
-                  </Button>
+                  </BrandButton>
                 </div>
               </motion.div>
             </div>

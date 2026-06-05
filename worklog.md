@@ -867,3 +867,38 @@ Stage Summary:
 - Features: Ctrl+K/Cmd+K trigger, 4 sections (Files/Actions/Navigation/Settings), fuzzy search, keyboard navigation, glass-morphism UI, emerald theme, Framer Motion animations, ARIA accessibility
 - Integrated into workspace.tsx for both mobile and desktop layouts
 - Lint: ✅ Clean | Dev Server: ✅ Compiling successfully
+
+---
+Task ID: 6
+Agent: Diff Viewer Agent
+Task: Add File Diff Viewer for AI-generated changes
+
+Work Log:
+- Created `/src/components/file-diff-viewer.tsx` (867 lines) - comprehensive diff viewer component
+- Implemented custom `computeDiff` algorithm with common prefix/suffix detection for line-by-line comparison
+- Supports `oldContent: string | null` (null = new file) and `newContent: string | null` (null = deleted file) interface
+- Created `UnifiedDiffView` with dual line numbers, +/- prefix indicators, color-coded backgrounds
+- Created `SplitDiffView` with side-by-side old/new comparison, paired line matching
+- Created `SingleFileDiffCard` - collapsible card per file with header (path, language badge, status badge, diff stats)
+- Created `FileDiffViewer` - standalone component with summary header (file count, total additions/deletions, accept/reject all)
+- Created `DiffDialog` - modal dialog variant for integration with chat panel
+- Features: unified/split view toggle, per-file accept/reject buttons, accept all/reject all, Framer Motion animations
+- Color coding: added lines (emerald-50/emerald-950/20), removed lines (red-50/red-950/20)
+- Language color badges for 10+ languages (TypeScript=sky, JavaScript=amber, CSS=purple, etc.)
+- Staggered entrance animations for diff cards (50ms delay per card)
+- Collapsible card content with Framer Motion height animation
+- Exports: `FileDiffViewer`, `DiffDialog`, `computeDiff`, `FileDiff`
+- Updated `/src/components/chat-panel.tsx` to integrate diff viewer:
+  - Added `pendingDiffs` useMemo to compute FileDiff[] from generatedFiles + existing files
+  - Added "Review Changes" button (GitCompare icon) in generated files notification
+  - Added DiffDialog with accept/reject handlers
+  - Added `diffDialogOpen` state management
+- Lint: ✅ Zero new errors (36 pre-existing in workspace.tsx, not caused by this task)
+
+Stage Summary:
+- New file: `/src/components/file-diff-viewer.tsx` - Full-featured diff viewer (867 lines)
+- Modified: `/src/components/chat-panel.tsx` - Added Review Changes button + DiffDialog integration
+- Exports: `FileDiffViewer`, `DiffDialog`, `computeDiff`, `FileDiff` types
+- Diff algorithm: Custom prefix/suffix matching, handles new/deleted/modified files
+- View modes: Unified (dual line numbers) and Split (side-by-side)
+- Actions: Per-file accept/reject, Accept All, Reject All with toast notifications

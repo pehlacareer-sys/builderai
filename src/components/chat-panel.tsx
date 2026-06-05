@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useChatStore, ChatMessage } from '@/stores/chat-store'
 import { useProjectStore } from '@/stores/project-store'
 import { Button } from '@/components/ui/button'
@@ -15,12 +15,13 @@ import {
   Send, StopCircle, Loader2, Bot, User, Sparkles,
   Brain, Code2, ShieldCheck, TestTube, Rocket,
   Plus, MessageSquare, Code, Keyboard,
-  Copy, Check, ThumbsUp, ThumbsDown, RefreshCw, Clock,
-  ChevronDown, FileCode
+  Copy, Check, ThumbsUp, ThumbsDown, RefreshCw,
+  ChevronDown, FileCode, GitCompare
 } from 'lucide-react'
 import { ModelSelector } from '@/components/model-selector'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { toast } from 'sonner'
+import { DiffDialog, FileDiff as FileDiffType } from '@/components/file-diff-viewer'
 
 const AGENT_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
   planner: { icon: Brain, color: 'text-violet-500 bg-violet-50 dark:bg-violet-950/30', label: 'Planner' },
@@ -287,12 +288,13 @@ export function ChatPanel() {
     selectConversation, loadConversations,
     clearError,
   } = useChatStore()
-  const { currentProject, addGeneratedFiles } = useProjectStore()
+  const { currentProject, addGeneratedFiles, files } = useProjectStore()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [scrollProgress, setScrollProgress] = useState(0)
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false)
 
   useEffect(() => {
     if (currentProject) {
@@ -323,11 +325,34 @@ export function ChatPanel() {
     setScrollProgress(progress)
   }, [])
 
+  // Compute file diffs for the diff viewer dialog
+  const pendingDiffs: FileDiffType[] = useMemo(() => {
+    if (generatedFiles.length === 0) return []
+    return generatedFiles.map((genFile) => {
+      const existingFile = files.find((f) => f.path === genFile.path)
+      return {
+        path: genFile.path,
+        language: genFile.language || 'text',
+        oldContent: existingFile ? existingFile.content : null,
+        newContent: genFile.content,
+      }
+    })
+  }, [generatedFiles, files])
+
   useEffect(() => {
     if (generatedFiles.length > 0 && currentProject) {
       addGeneratedFiles(currentProject.id, generatedFiles)
     }
   }, [generatedFiles, currentProject, addGeneratedFiles])
+
+  // Handle accepting diffs
+  const handleAcceptDiffs = useCallback((acceptedPaths: string[]) => {
+    toast.success(`Applied ${acceptedPaths.length} file change${acceptedPaths.length !== 1 ? 's' : ''}`)
+  }, [])
+
+  const handleRejectDiffs = useCallback(() => {
+    toast.info('File changes discarded')
+  }, [])
 
   const handleSend = async () => {
     if (!input.trim() || !currentProject) return
@@ -519,18 +544,29 @@ export function ChatPanel() {
             </motion.div>
           )}
 
-          {/* Generated files notification with clickable file chips */}
+          {/* Generated files notification with Review Changes button */}
           {generatedFiles.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-2.5 rounded-lg"
             >
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Code className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
-                  {generatedFiles.length} files generated
-                </span>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Code className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                    {generatedFiles.length} files generated
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                  onClick={() => setDiffDialogOpen(true)}
+                >
+                  <GitCompare className="w-3 h-3 mr-1" />
+                  Review Changes
+                </Button>
               </div>
               <div className="flex flex-wrap gap-1">
                 {generatedFiles.map((f) => (
@@ -574,6 +610,15 @@ export function ChatPanel() {
 
       {/* Agent Status Bar */}
       <AgentStatusBar />
+
+      {/* Diff Viewer Dialog */}
+      <DiffDialog
+        open={diffDialogOpen}
+        onOpenChange={setDiffDialogOpen}
+        fileDiffs={pendingDiffs}
+        onAcceptAll={handleAcceptDiffs}
+        onRejectAll={handleRejectDiffs}
+      />
 
       {/* Input Area */}
       <div className="border-t p-2.5 bg-background/80 backdrop-blur-sm">

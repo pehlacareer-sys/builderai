@@ -22,6 +22,7 @@ import {
   LogOut,
   FolderKanban,
   FileCode,
+  Map,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -39,6 +40,7 @@ interface UserProfileDropdownProps {
   fileCount: number
   onLogout: () => void
   onShowShortcuts: () => void
+  onShowTour?: () => void
 }
 
 export function UserProfileDropdown({
@@ -47,6 +49,7 @@ export function UserProfileDropdown({
   fileCount,
   onLogout,
   onShowShortcuts,
+  onShowTour,
 }: UserProfileDropdownProps) {
   const { theme, setTheme } = useTheme()
 
@@ -152,6 +155,15 @@ export function UserProfileDropdown({
               Keyboard Shortcuts
               <span className="ml-auto text-[10px] text-muted-foreground">⌘/</span>
             </DropdownMenuItem>
+            {onShowTour && (
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={onShowTour}
+              >
+                <Map className="w-4 h-4 text-emerald-500" />
+                Show Tour
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="cursor-pointer"
               onClick={handleToggleTheme}
