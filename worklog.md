@@ -1692,3 +1692,75 @@ Stage Summary:
 8. **Add file tree virtualization** — For projects with many files
 9. **Add API key management** — Let users configure their own API keys
 10. **Add CI/CD pipeline** — Automated testing and deployment
+
+---
+
+## Phase: Architecture Hardening — Security Foundation
+
+### Task: Chat Route Authentication (`/api/chat`)
+
+**Problem**: The `/api/chat` route had ZERO authentication. Anyone could invoke the multi-agent pipeline without logging in, and no project ownership was verified.
+
+**Implementation**: Added JWT authentication + project ownership verification to `src/app/api/chat/route.ts`
+
+#### Changes Made
+
+**File: `src/app/api/chat/route.ts`**
+
+1. **Added imports**:
+   - `import { verifyToken, getTokenFromHeaders } from '@/lib/auth'`
+   - `import { db } from '@/lib/db'`
+
+2. **Added authentication gate** (before request body parsing):
+   - Step 1: Extract Bearer token from Authorization header via `getTokenFromHeaders(request.headers)`
+   - If no token → `401 { success: false, error: "Authorization token required" }`
+   - Step 2: Verify JWT signature and expiration via `verifyToken(token)`
+   - If invalid/expired → `401 { success: false, error: "Invalid or expired token" }`
+
+3. **Added project ownership verification** (after request body parsing):
+   - If `projectId` is provided in the request body, query `db.project.findFirst({ where: { id: projectId, userId } })`
+   - If project not found OR owned by a different user → `403 { success: false, error: "Access denied: project not found or not owned by you" }`
+   - Uses 403 for both "not found" and "not owned" to avoid leaking project existence
+
+#### Unauthorized Response Examples
+
+```json
+// No Authorization header
+{ "success": false, "error": "Authorization token required" }  // 401
+
+// Invalid/expired JWT
+{ "success": false, "error": "Invalid or expired token" }  // 401
+
+// Valid JWT but project not owned by user
+{ "success": false, "error": "Access denied: project not found or not owned by you" }  // 403
+```
+
+#### Authorized Flow Example
+
+1. Client sends: `POST /api/chat` with `Authorization: Bearer <valid-JWT>` and `{ message: "...", projectId: "<owned-project-id>" }`
+2. `verifyToken()` validates JWT signature + expiration → returns `userId`
+3. `db.project.findFirst({ where: { id: projectId, userId } })` confirms ownership
+4. Pipeline proceeds normally → SSE stream returned (200)
+
+#### Verification Results
+
+| Test | Status | Response |
+|------|--------|----------|
+| No auth header | ✅ 401 | "Authorization token required" |
+| Invalid Bearer token | ✅ 401 | "Invalid or expired token" |
+| Valid JWT + owned projectId | ✅ 200 | SSE stream with agent pipeline |
+| Valid JWT + wrong projectId | ✅ 403 | "Access denied: project not found or not owned by you" |
+| ESLint | ✅ | Zero errors |
+| TypeScript compile | ✅ | No errors in chat route (pre-existing errors in other files) |
+
+#### Exported Functions Used
+- `verifyToken(token: string): string | null` — from `@/lib/auth`
+- `getTokenFromHeaders(headers: Headers): string | null` — from `@/lib/auth`
+
+#### All return 401 paths
+1. `getTokenFromHeaders()` returns null → 401
+2. `verifyToken()` returns null → 401
+
+#### All return 403 paths
+1. `db.project.findFirst()` returns null (project not found or not owned) → 403
+
