@@ -260,6 +260,14 @@ class ApiClient {
     return data.data
   }
 
+  async restoreVersion(projectId: string, versionId: string) {
+    const data = await this.fetch<{ success: boolean; data: { restoredVersion: number; backupVersion: number; filesRestored: number } }>(`/projects/${projectId}/versions`, {
+      method: 'PUT',
+      body: JSON.stringify({ versionId }),
+    })
+    return data.data
+  }
+
   // Validate
   async validateProject(projectId: string) {
     const data = await this.fetch<{ success: boolean; data: any }>(`/projects/${projectId}/validate`, {

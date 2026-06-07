@@ -9,14 +9,14 @@ import { Separator } from '@/components/ui/separator'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell, FileCode, Shield, Loader2, MessageSquare,
-  Save, X, CheckCheck, Sparkles
+  Save, X, CheckCheck, Sparkles, RotateCcw
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface Notification {
   id: string
-  type: 'files_generated' | 'status_changed' | 'validation' | 'version_saved' | 'chat_started'
+  type: 'files_generated' | 'status_changed' | 'validation' | 'version_saved' | 'version_restored' | 'chat_started'
   title: string
   description: string
   timestamp: string
@@ -158,6 +158,12 @@ function NotificationIcon({ type }: { type: Notification['type'] }) {
       return (
         <div className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
           <Save className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+        </div>
+      )
+    case 'version_restored':
+      return (
+        <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+          <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
         </div>
       )
     case 'chat_started':

@@ -41,6 +41,7 @@ interface ProjectState {
   updateFile: (projectId: string, fileId: string, updates: Record<string, string>) => Promise<void>
   addGeneratedFiles: (projectId: string, files: Array<{ path: string; content: string; language: string }>) => Promise<void>
   refreshFiles: () => Promise<void>
+  restoreVersion: (projectId: string, versionId: string) => Promise<{ restoredVersion: number; backupVersion: number; filesRestored: number }>
   clearCurrentProject: () => void
   clearError: () => void
 }
@@ -171,6 +172,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ files })
     } catch (error: any) {
       set({ error: error.message })
+    }
+  },
+
+  restoreVersion: async (projectId, versionId) => {
+    set({ isLoading: true })
+    try {
+      const result = await api.restoreVersion(projectId, versionId)
+      // Refresh files to reflect the restored state
+      const files = await api.getProjectFiles(projectId)
+      set({
+        files,
+        currentFile: files.length > 0 ? files[0] : null,
+        isLoading: false,
+      })
+      return result
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false })
+      throw error
     }
   },
 

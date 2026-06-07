@@ -56,7 +56,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function Workspace() {
-  const { currentProject, files, currentFile, selectFile, clearCurrentProject, refreshFiles, projects } = useProjectStore()
+  const { currentProject, files, currentFile, selectFile, clearCurrentProject, refreshFiles, projects, restoreVersion } = useProjectStore()
   const { user, logout } = useAuthStore()
   const { generatedFiles, conversations, messages, agentPipeline, isProcessing } = useChatStore()
   const isMobile = useIsMobile()
@@ -72,6 +72,7 @@ export function Workspace() {
   const [versions, setVersions] = useState<VersionData[]>([])
   const [loadingVersions, setLoadingVersions] = useState(false)
   const [creatingVersion, setCreatingVersion] = useState(false)
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null)
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -309,6 +310,30 @@ export function Workspace() {
       setCreatingVersion(false)
     }
   }, [currentProject, versions.length, loadVersions])
+
+  const handleRestoreVersion = useCallback(async (versionId: string) => {
+    if (!currentProject) return
+    setRestoringVersionId(versionId)
+    try {
+      const result = await restoreVersion(currentProject.id, versionId)
+      toast.success('Version restored', {
+        description: `Restored to v${result.restoredVersion}. Backup created as v${result.backupVersion}.`,
+      })
+      pushNotification({
+        type: 'version_restored',
+        title: 'Version restored',
+        description: `Restored to v${result.restoredVersion} (${result.filesRestored} files). Backup: v${result.backupVersion}`,
+        projectName: currentProject.name,
+      })
+      await loadVersions()
+    } catch (error: any) {
+      toast.error('Restore failed', {
+        description: error.message || 'Could not restore version',
+      })
+    } finally {
+      setRestoringVersionId(null)
+    }
+  }, [currentProject, loadVersions])
 
   const toggleVersionExpand = (versionId: string) => {
     setExpandedVersions(prev => {
@@ -640,6 +665,8 @@ export function Workspace() {
                     onRefresh={loadVersions}
                     expandedVersions={expandedVersions}
                     onToggleExpand={toggleVersionExpand}
+                    onRestoreVersion={handleRestoreVersion}
+                    restoringVersionId={restoringVersionId}
                   />
                 </TabsContent>
                 <TabsContent value="memory" className="flex-1 m-0 overflow-hidden">
@@ -983,6 +1010,8 @@ export function Workspace() {
                 onRefresh={loadVersions}
                 expandedVersions={expandedVersions}
                 onToggleExpand={toggleVersionExpand}
+                onRestoreVersion={handleRestoreVersion}
+                restoringVersionId={restoringVersionId}
               />
             </TabsContent>
             <TabsContent value="memory" className="flex-1 m-0 overflow-hidden">
