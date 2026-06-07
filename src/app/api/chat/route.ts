@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
+import { verifyToken, getTokenFromHeaders } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 // Lazy-initialize the ZAI SDK
 let zai: Awaited<ReturnType<typeof ZAI.create>> | null = null
@@ -77,10 +79,44 @@ function parseFilesFromResponse(response: string): Array<{ path: string; content
 
 export async function POST(request: NextRequest) {
   try {
+    // ── Authentication Gate ──────────────────────────────────────────────
+    // Step 1: Extract Bearer token from Authorization header
+    const token = getTokenFromHeaders(request.headers)
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Authorization token required' },
+        { status: 401 }
+      )
+    }
+
+    // Step 2: Verify JWT signature and expiration
+    const userId = verifyToken(token)
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or expired token' },
+        { status: 401 }
+      )
+    }
+
+    // ── Request Parsing ──────────────────────────────────────────────────
     const { message, projectId, model, conversationHistory = [] } = await request.json()
 
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
+    }
+
+    // Step 3: Verify project ownership — user must own the project
+    if (projectId) {
+      const project = await db.project.findFirst({
+        where: { id: projectId, userId },
+      })
+      if (!project) {
+        // Could be not found OR owned by another user — use 403 to avoid leaking existence
+        return NextResponse.json(
+          { success: false, error: 'Access denied: project not found or not owned by you' },
+          { status: 403 }
+        )
+      }
     }
 
     const sdk = await getZAI()
